@@ -1,0 +1,13 @@
+{
+  "name": "dotacoach",
+  "private": true,
+  "type": "module",
+  "description": "Claude Code skill: Dota 2 coach backed by live OpenDota, Valve and STRATZ data",
+  "scripts": {
+    "typecheck": "bunx tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "bun-types": "^1.4.4",
+    "typescript": "^7.0.2"
+  }
+}
