@@ -38,7 +38,35 @@ A Claude Code skill that turns Claude into a Dota 2 coach. Claude pulls live dat
 
    Without it, every tool still works on OpenDota and says so in its source line. With it, `GetHeroStats --role` uses STRATZ ranked per-position data and `GetMatchups` uses STRATZ matchups, with `--bracket` support. If a STRATZ call fails, the tool falls back to OpenDota and prints the reason.
 
+4. Tell it who you are. In Claude Code, say "my Dota account is <Friend ID>" (or paste your OpenDota/Dotabuff/STRATZ profile link) and mention any alts. Claude saves them to `profile.json` in the skill folder (git-ignored) with `tools/Profile.ts`, and uses them for "review my last game" and your bracket. You can also run it directly:
+
+   ```bash
+   bun run tools/Profile.ts set-main <friend-id>
+   ```
+
+   ```bash
+   bun run tools/Profile.ts add-alt <friend-id> --label=smurf
+   ```
+
 Restart Claude Code so it picks up the skill. Ask a Dota question ("what changed in the latest patch?", "how do I counter Pudge?") and Claude loads the skill on its own.
+
+## Automatic review after each game
+
+OpenDota and STRATZ have no webhooks. The instant signal comes from Dota itself: Game State Integration posts game state to a local URL, including the match id when the game ends. `tools/WatchMatches.ts` listens for that, asks OpenDota to parse the replay, then runs `claude -p` to review the match and saves the result to `reviews/<match_id>.md`. Expect the review a few minutes after the game: the trigger is instant, the OpenDota parse takes 2-10 minutes, the review about a minute.
+
+On the PC that runs Dota:
+
+```bash
+bun run tools/WatchMatches.ts --install-gsi
+```
+
+Add `-gamestateintegration` to Dota's launch options in Steam and restart Dota. Then before you play:
+
+```bash
+bun run tools/WatchMatches.ts
+```
+
+Add `--poll=5` to also check OpenDota every 5 minutes, which catches games played on another PC. `--help` lists every option, including `--test=<match_id>` for a dry run and `DOTACOACH_ON_MATCH` to run your own command instead of Claude. Valve notes GSI can cost some frame rate; remove the launch option to turn it off.
 
 ## Testing
 
@@ -65,6 +93,8 @@ bun run tools/GetHeroStats.ts --bracket=legend --role=pos4 --top=10
 bun run tools/GetPatch.ts --hero=pudge
 bun run tools/GetItemBuilds.ts qop
 bun run tools/GetMatch.ts <match_id> --draft
+bun run tools/Profile.ts
+bun run tools/LastMatch.ts --count=5
 ```
 
 Add `--json` for structured output and `--help` to see every flag.
@@ -80,9 +110,11 @@ bun run typecheck
 ```
 SKILL.md      entry point Claude reads: when to use the skill, which tool and workflow
 tools/        one CLI per data need (bun run tools/<Name>.ts)
-workflows/    playbooks for each request type (patch, hero, meta, counter, draft, match)
+workflows/    playbooks for each request type (patch, hero, meta, counter, draft, match, auto review)
 lib/          API client, file cache, hero-name resolver, item names, STRATZ client
 tests/        resolver tests and the live smoke test
+profile.json  your accounts and notes (created by tools/Profile.ts, git-ignored)
+reviews/      post-game reviews written by WatchMatches (git-ignored)
 ```
 
 ## Cache and rate limits
@@ -94,11 +126,13 @@ Environment variables (shell or `.env`):
 | Variable | Effect |
 | --- | --- |
 | `STRATZ_API_KEY` | Enables the STRATZ data paths. |
-
-Any of these can go in the skill folder's `.env` file instead of your shell.
 | `DOTACOACH_NO_CACHE=1` | Skip the cache for this run. |
 | `DOTACOACH_CACHE_DIR` | Use a different cache directory. |
+| `DOTACOACH_PROFILE` | Use a different profile file instead of `profile.json` in the skill folder. |
+| `DOTACOACH_ON_MATCH` | Command WatchMatches runs after a game instead of `claude -p`. |
 | `DOTACOACH_DEBUG=1` | Print stack traces on unexpected errors. |
+
+Any of these can go in the skill folder's `.env` file instead of your shell.
 
 ## Data caveats
 

@@ -33,6 +33,16 @@ fi
 run ok  bun run tools/GetHero.ts wr --json
 run ok  env STRATZ_API_KEY= bun run tools/GetMatchups.ts es
 
+export DOTACOACH_PROFILE=$(mktemp -d)/profile.json
+run ok  bun run tools/Profile.ts
+run ok  bun run tools/Profile.ts set-main https://www.opendota.com/players/86745912
+run ok  bun run tools/LastMatch.ts --count=2
+run ok  bun run tools/WatchMatches.ts --print-gsi-config
+run err bun run tools/Profile.ts add-alt https://steamcommunity.com/id/someone
+run err bun run tools/Profile.ts add-alt notanid
+run err bun run tools/WatchMatches.ts --test=abc --no-parse --no-review
+unset DOTACOACH_PROFILE
+
 run err bun run tools/GetHero.ts xyzzy
 run err bun run tools/GetHero.ts shadow
 run err bun run tools/GetMatch.ts 1
