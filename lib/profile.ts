@@ -24,6 +24,8 @@ export interface Profile {
   gsi_token?: string;
   /** Dota install folder chosen in the dashboard. */
   dota_dir?: string;
+  /** Which map cells the edges of the user's own map picture (map.png etc.) sit on. */
+  map_bounds?: { left: number; right: number; bottom: number; top: number };
   /** Update the skill (git fast-forward) when the dashboard starts. Default on. */
   update?: { auto?: boolean };
   /** Watcher settings saved from the dashboard. */

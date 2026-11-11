@@ -19,6 +19,8 @@ import {
   saveProfile,
   setMain,
 } from "../lib/profile.ts";
+import { DEFAULT_BOUNDS, findMapImage, readMapImage, removeMapImage, saveMapImage, validateBounds } from "../lib/mapimage.ts";
+import { buildMapData } from "../lib/replaymap.ts";
 import { hasStratzKey, stratzQuery } from "../lib/stratz.ts";
 import { type UpdateStatus, applyUpdate, checkForUpdate } from "../lib/update.ts";
 import {
@@ -243,6 +245,7 @@ await main(async () => {
       update: { auto: profile.update?.auto !== false, status: updateStatus, checking: updateChecking },
       watcher: watcher.status(),
       reviews: listReviews(),
+      mapImage: { present: Boolean(findMapImage()), bounds: profile.map_bounds ?? DEFAULT_BOUNDS, defaults: DEFAULT_BOUNDS },
     };
   }
 
@@ -488,6 +491,36 @@ await main(async () => {
       }
     }
 
+    if (method === "GET" && path === "/api/map-image") {
+      const img = readMapImage();
+      if (!img) throw new HttpError(404, "No map picture saved.");
+      return new Response(new Uint8Array(img.body), { headers: { "Content-Type": img.type, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+    }
+    if (method === "POST" && path === "/api/map-image") {
+      if (body.image === null) {
+        removeMapImage();
+        return json({ message: "Map picture removed; the map uses the drawn outline again." });
+      }
+      if (typeof body.image !== "string") throw new HttpError(400, "Send the picture as a data URL.");
+      saveMapImage(body.image);
+      return json({ message: "Map picture saved. Check that the marks line up; adjust the edges if they don't." });
+    }
+    if (method === "POST" && path === "/api/map-image/bounds") {
+      const profile = loadProfile();
+      if (body.reset === true) delete profile.map_bounds;
+      else profile.map_bounds = validateBounds(body.bounds);
+      saveProfile(profile);
+      return json({ message: body.reset === true ? "Map edges reset." : "Map edges saved." });
+    }
+
+    const mapReq = path.match(/^\/api\/map\/(\d{1,12})$/);
+    if (method === "GET" && mapReq) {
+      const acc = url.searchParams.get("account");
+      const accounts = profileAccounts(loadProfile()).map((a) => a.account_id);
+      if (acc && /^\d{1,10}$/.test(acc)) accounts.unshift(Number(acc));
+      return json(await buildMapData(mapReq[1]!, { accounts }));
+    }
+
     throw new HttpError(404, "Not found.");
   }
 
@@ -538,7 +571,7 @@ await main(async () => {
             "Content-Type": "text/html; charset=utf-8",
             "Cache-Control": "no-store",
             "Content-Security-Policy":
-              "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+              "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
             "X-Content-Type-Options": "nosniff",
             "Referrer-Policy": "no-referrer",
           },

@@ -411,6 +411,7 @@ export class Watcher {
       "Run `bun run tools/Profile.ts` first for my accounts and notes.",
       "This review runs automatically right after the game and nobody can answer questions:",
       "do not ask any, state assumptions instead. Keep it under 300 words and put the three takeaways first.",
+      "If the replay is parsed, save 2-5 map marks with `bun run tools/ReplayMap.ts <id> --save-markers=...` as the workflow describes; the dashboard draws them.",
     ].join(" ");
     this.log("Writing the review with Claude Code...");
     const p = Bun.spawn(

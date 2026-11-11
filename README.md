@@ -54,6 +54,21 @@ A Claude Code skill that turns Claude into a Dota 2 coach. Claude pulls live dat
 
 Restart Claude Code so it picks up the skill. Ask a Dota question ("what changed in the latest patch?", "how do I counter Pudge?") and Claude loads the skill on its own.
 
+## Match map
+
+Every match in the dashboard's list has a **Map** button, and **View review** opens the same map above the review. For a parsed replay it draws:
+
+- observer and sentry wards for both teams, with a strike-through on wards cleared early (hover for who placed it, when, and who cleared it)
+- deaths that happened in teamfights (OpenDota only records positions for those), and teamfight centres
+- your early-game lane position, your lane opponent's, and where all heroes walked
+- coach marks: where to ward, where to sentry, where to stand and which spots got you killed, saved by the review
+
+Drag the time slider or press Play to see which wards were up at each moment. Reviews written by the watcher save the coach marks automatically; in a conversation, ask Claude to review a match and it saves them too. The marks live in `reviews/<match_id>.map.json`.
+
+Ward, death and lane positions are the recorded ones. By default the map behind them is a rough outline (river and mid lane). To see the real Dota map, save a copy of the minimap picture yourself and add it under **Use the in-game map picture** below the map. Any top-down picture of the whole map works, with Radiant bottom-left; Liquipedia hosts the current patch's minimap. The skill does not ship Valve's map art, so the picture is stored only in your skill folder as `map.png`, `map.jpg` or `map.webp` (git-ignored). If the marks sit off the lanes, adjust the four edge numbers until the "where heroes walked" layer lies on the lanes, then save. The edges are kept in `profile.json`.
+
+Without a parsed replay there is nothing to draw.
+
 ## Updating
 
 The dashboard updates the skill when it starts: it checks GitHub and installs a newer version before the page opens. While it runs it checks again every 6 hours and shows an **Update now** banner. Turn automatic updates off in the page's Updates section, or skip one run with `--no-update`.
@@ -111,6 +126,7 @@ bun run tools/GetHeroStats.ts --bracket=legend --role=pos4 --top=10
 bun run tools/GetPatch.ts --hero=pudge
 bun run tools/GetItemBuilds.ts qop
 bun run tools/GetMatch.ts <match_id> --draft
+bun run tools/ReplayMap.ts <match_id> --hero=slardar
 bun run tools/Profile.ts
 bun run tools/LastMatch.ts --count=5
 ```
@@ -127,13 +143,13 @@ bun run typecheck
 
 ```
 SKILL.md      entry point Claude reads: when to use the skill, which tool and workflow
-tools/        one CLI per data need (bun run tools/<Name>.ts), plus Dashboard and WatchMatches
+tools/        one CLI per data need (ReplayMap prints map positions) (bun run tools/<Name>.ts), plus Dashboard and WatchMatches
 dashboard/    the setup page served by tools/Dashboard.ts
 workflows/    playbooks for each request type (patch, hero, meta, counter, draft, match, auto review)
 lib/          API client, file cache, hero-name resolver, item names, STRATZ client
 tests/        resolver tests and the live smoke test
 profile.json  your accounts and notes (created by tools/Profile.ts, git-ignored)
-reviews/      post-game reviews written by WatchMatches (git-ignored)
+reviews/      post-game reviews and their map marks (<id>.map.json), git-ignored
 ```
 
 ## Cache and rate limits
