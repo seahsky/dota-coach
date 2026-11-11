@@ -19,8 +19,10 @@ export interface MapBounds {
   bottom: number;
   top: number;
 }
-// OpenDota cells run 64-192 over the whole world square, which is what a full minimap export covers.
-export const DEFAULT_BOUNDS: MapBounds = { left: 64, right: 192, bottom: 64, top: 192 };
+// Fitted to a 1024px top-down "simplemap" picture with a ~60px empty margin (Liquipedia's
+// Gamemap simplemap style): the edges that put ~1,400 observer and sentry placements from 12
+// parsed pro matches on walkable, non-river ground. A different picture needs its own edges.
+export const DEFAULT_BOUNDS: MapBounds = { left: 54.5, right: 201, bottom: 56, top: 202 };
 
 const fileFor = (ext: Ext) => join(DIR, `map.${ext}`);
 

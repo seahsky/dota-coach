@@ -759,6 +759,8 @@ function centroidOf(cells) {
 function mapBase(svg) {
   const g = el("g", { "aria-hidden": "true", id: "mapBase" });
   const b = MAP.bounds;
+  // With a picture, frame the whole picture; otherwise the drawn outline's square.
+  svg.setAttribute("viewBox", MAP.imgUrl && b ? `${b.left} ${FY(b.top)} ${b.right - b.left} ${b.top - b.bottom}` : "62 62 132 132");
   if (MAP.imgUrl && b) {
     g.append(
       el("rect", { x: 62, y: 62, width: 132, height: 132, fill: "var(--map-bg)" }),
