@@ -196,9 +196,12 @@ await main(async () => {
   };
 
   const eligible = rows.filter((r) => r.games >= minGames).map(toMatchup).sort((a, b) => b.shrunkDelta - a.shrunkDelta);
-  const n = Math.min(top, Math.floor(eligible.length / 2));
-  const best = eligible.slice(0, n);
-  const worst = eligible.slice(eligible.length - n).reverse();
+  // Halves keep one opponent from appearing in both lists; the sign filter keeps a
+  // slightly-positive matchup out of "worst" when few opponents qualify.
+  const half = Math.ceil(eligible.length / 2);
+  const best = eligible.slice(0, Math.min(top, half)).filter((m) => m.shrunkDelta > 0);
+  const worst = eligible.slice(half).reverse().slice(0, top).filter((m) => m.shrunkDelta < 0);
+  const n = best.length + worst.length;
 
   let vs: Result["vs"] = null;
   let vsMissing: string | null = null;
@@ -272,10 +275,10 @@ await main(async () => {
     if (n === 0) {
       out.push(`Not enough opponents with ${minGames}+ games to rank. Try a lower --min-games.`, "");
     } else {
-      out.push(`## Best matchups (${hero.name} wins more)`, "", table(headers, best.map(fmt), align), "");
-      out.push(`## Worst matchups (${hero.name} wins less)`, "", table(headers, worst.map(fmt), align), "");
+      out.push(`## Best matchups (${hero.name} wins more)`, "", best.length ? table(headers, best.map(fmt), align) : "None above baseline.", "");
+      out.push(`## Worst matchups (${hero.name} wins less)`, "", worst.length ? table(headers, worst.map(fmt), align) : "None below baseline.", "");
     }
-    out.push(sourceLine(source, fallbackReason ? "STRATZ fallback" : hasStratzKey() ? undefined : "STRATZ_API_KEY unset"));
+    out.push(sourceLine(source, !hasStratzKey() ? "STRATZ_API_KEY unset" : fallbackReason ? "STRATZ fallback" : undefined));
     return out.join("\n");
   });
 });

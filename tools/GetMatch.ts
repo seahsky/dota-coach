@@ -2,7 +2,7 @@ import { HOUR, TTL, cacheGet, cacheSet } from "../lib/cache.ts";
 import { duration, num, output, parseCli, sourceLine, table } from "../lib/cli.ts";
 import { DotaError, NotFoundError, RateLimitError, main } from "../lib/errors.ts";
 import { heroName } from "../lib/heroes.ts";
-import { OPENDOTA, getJson, opendota } from "../lib/http.ts";
+import { OPENDOTA, getJsonMeta, opendota } from "../lib/http.ts";
 import { itemMap } from "../lib/items.ts";
 import type { OdMatch, OdMatchPlayer, OdPatch } from "../lib/types.ts";
 
@@ -119,7 +119,13 @@ async function fetchMatch(id: string): Promise<{ match: Match; cache: string }> 
   // ttl 0 so getJson neither reads nor writes the cache; we decide below based on parse state.
   let match: Match;
   try {
-    match = await getJson<Match>(url, { ttl: 0, source: "OpenDota", what: `Match ${id}` });
+    const r = await getJsonMeta<Match>(url, { ttl: 0, source: "OpenDota", what: `Match ${id}` });
+    if (r.stale) {
+      // Not re-stamped: the next run should still try a refresh.
+      const age = hit ? Math.round((Date.now() - hit.fetchedAt) / 3600_000) : 0;
+      return { match: r.data, cache: `stale cache from ${age}h ago (OpenDota unavailable)` };
+    }
+    match = r.data;
   } catch (err) {
     if (hit && err instanceof RateLimitError) {
       const age = Math.round((Date.now() - hit.fetchedAt) / 60_000);
@@ -154,6 +160,7 @@ async function main_(): Promise<void> {
   const id = args.positionals[0];
   if (!id) throw new DotaError(`Missing match id.\nUsage: ${USAGE}`);
   if (!/^\d+$/.test(id) || Number(id) <= 0) throw new DotaError(`Match id must be a positive number (got "${id}").`);
+  if (!Number.isSafeInteger(Number(id)) || id.length > 12) throw new DotaError(`"${id}" is not a valid Dota 2 match id (too large).`);
   if (args.positionals.length > 1) throw new DotaError(`Expected one match id.\nUsage: ${USAGE}`);
 
   const [{ match: m, cache }, modes, lobbies, patches, items] = await Promise.all([

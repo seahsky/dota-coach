@@ -187,12 +187,12 @@ export function resolveFrom(heroes: Hero[], input: string): Hero {
   if (initials.length === 1) return initials[0]!;
 
   const prefix = heroes.filter((h) => norm(h.name).startsWith(q) || norm(h.key).startsWith(q));
-  if (prefix.length === 1) return prefix[0]!;
-
   const wordPrefix = heroes.filter((h) => h.name.toLowerCase().split(/[\s-]+/).some((w) => norm(w).startsWith(q)));
+  // "spirit" prefixes only Spirit Breaker's full name but is a word in five other names.
+  if (prefix.length === 1 && wordPrefix.length <= 1) return prefix[0]!;
   if (prefix.length === 0 && wordPrefix.length === 1) return wordPrefix[0]!;
 
-  const ambiguous = prefix.length > 1 ? prefix : wordPrefix.length > 1 ? wordPrefix : [];
+  const ambiguous = prefix.length > 1 ? prefix : wordPrefix.length > 1 ? [...new Set([...prefix, ...wordPrefix])] : [];
   if (ambiguous.length > 1) {
     throw new UnknownHeroError(
       `"${input}" matches several heroes: ${ambiguous.map((h) => h.name).join(", ")}. Be more specific.`,

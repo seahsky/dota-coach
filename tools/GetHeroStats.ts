@@ -303,7 +303,7 @@ async function fromExplorerPositions(role: number, days: number): Promise<Sample
       what: "OpenDota explorer query",
     });
   } catch (err) {
-    // getJson hides the body; the explorer answers HTTP 400 {"err":"Error: Query read timeout"} on its 15 s limit.
+    // The explorer answers HTTP 400 {"err":"Error: Query read timeout"} on its 15 s limit.
     if (err instanceof DotaError && /HTTP 400/.test(err.message)) {
       throw new DotaError(
         `OpenDota explorer rejected or timed out on the position query (it has a 15 s limit). Retry, or use a smaller --days (now ${days}).`,

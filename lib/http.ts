@@ -33,14 +33,21 @@ function rateLimitMessage(source: Source, res: Response): string {
 }
 
 /**
- * GET a JSON document with file caching. On a network failure or 5xx, falls
- * back to a stale cache entry if one exists and notes that on stderr.
+ * GET a JSON document with file caching. On a network failure, 5xx or 429,
+ * falls back to a stale cache entry if one exists and notes that on stderr.
  */
 export async function getJson<T>(url: string, opts: FetchOpts): Promise<T> {
+  return (await getJsonMeta<T>(url, opts)).data;
+}
+
+/** Like getJson, but also says whether the data came from a stale cache entry. */
+export async function getJsonMeta<T>(url: string, opts: FetchOpts): Promise<{ data: T; stale: boolean }> {
   if (opts.ttl > 0) {
     const hit = cacheGet<T>(url, opts.ttl);
-    if (hit) return hit.data;
+    if (hit) return { data: hit.data, stale: false };
   }
+  const fresh = (data: T) => ({ data, stale: false });
+  const stale = (data: T) => ({ data, stale: true });
 
   let res: Response;
   try {
@@ -49,21 +56,30 @@ export async function getJson<T>(url: string, opts: FetchOpts): Promise<T> {
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (err) {
-    const stale = staleOrNull<T>(url, opts.source);
-    if (stale !== null) return stale;
+    const old = staleOrNull<T>(url, opts.source);
+    if (old !== null) return stale(old);
     const reason = err instanceof Error && err.name === "TimeoutError" ? "timed out" : "could not connect";
     throw new DotaError(`${opts.source} request ${reason} (${new URL(url).host}). Check your network and retry.`);
   }
 
-  if (res.status === 429) throw new RateLimitError(rateLimitMessage(opts.source, res));
+  if (res.status === 429) {
+    const old = staleOrNull<T>(url, opts.source, "rate limited");
+    if (old !== null) return stale(old);
+    throw new RateLimitError(rateLimitMessage(opts.source, res));
+  }
   if (res.status === 404) {
-    if (opts.allow404) return null as T;
+    if (opts.allow404) return fresh(null as T);
     throw new NotFoundError(`${opts.what ?? "Resource"} not found on ${opts.source}.`);
   }
   if (!res.ok) {
-    const stale = staleOrNull<T>(url, opts.source);
-    if (stale !== null) return stale;
-    throw new DotaError(`${opts.source} returned HTTP ${res.status} for ${opts.what ?? new URL(url).pathname}. Try again later.`);
+    const detail = await errorDetail(res);
+    if (res.status >= 500) {
+      const old = staleOrNull<T>(url, opts.source);
+      if (old !== null) return stale(old);
+    }
+    const what = opts.what ?? new URL(url).pathname;
+    const hint = res.status >= 500 ? " Try again later." : "";
+    throw new DotaError(`${opts.source} returned HTTP ${res.status} for ${what}${detail ? `: ${detail}` : ""}.${hint}`);
   }
 
   let data: T;
@@ -73,15 +89,30 @@ export async function getJson<T>(url: string, opts: FetchOpts): Promise<T> {
     throw new DotaError(`${opts.source} returned a response that is not valid JSON.`);
   }
   if (opts.ttl > 0) cacheSet(url, data);
-  return data;
+  return fresh(data);
 }
 
-function staleOrNull<T>(url: string, source: Source): T | null {
-  const stale = cacheGetStale<T>(url);
-  if (!stale) return null;
-  const age = Math.round((Date.now() - stale.fetchedAt) / 3600_000);
-  process.stderr.write(`Note: ${source} unreachable; using cached data from ${age}h ago.\n`);
-  return stale.data;
+/** Short reason from an error body, e.g. OpenDota explorer's {"err":"Error: Query read timeout"}. */
+async function errorDetail(res: Response): Promise<string> {
+  try {
+    const text = (await res.text()).trim();
+    try {
+      const j = JSON.parse(text) as { err?: unknown; error?: unknown; message?: unknown };
+      const m = j.err ?? j.error ?? j.message;
+      if (typeof m === "string") return m.slice(0, 200);
+    } catch {}
+    return text.startsWith("<") ? "" : text.slice(0, 200);
+  } catch {
+    return "";
+  }
+}
+
+function staleOrNull<T>(url: string, source: Source, why = "unreachable"): T | null {
+  const old = cacheGetStale<T>(url);
+  if (!old) return null;
+  const age = Math.round((Date.now() - old.fetchedAt) / 3600_000);
+  process.stderr.write(`Note: ${source} ${why}; using cached data from ${age}h ago.\n`);
+  return old.data;
 }
 
 export const opendota = <T>(path: string, opts: Omit<FetchOpts, "source">) =>

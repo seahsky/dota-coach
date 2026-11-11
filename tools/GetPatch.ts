@@ -101,7 +101,9 @@ const VERB_RE = /^(.*?)\s+(increased|decreased|reduced|lowered|raised|improved)\
 const UNCLEAR_RE = /\b(rescaled|reworked|replaced with|changed from|changed to|now|no longer|removed|new|moved)\b/i;
 // Lower is better for these. Checked after HIGHER_FIRST so "cooldown reduction" stays higher-is-better.
 const LOWER_BETTER =
-  /cooldown|mana cost|health cost|manacost|\bcost\b|cast point|attack point|cast time|channel(ing)? time|restore time|replenish|recharge|charge time|respawn|delay|penalty|(?<!\/)self[- ]damage|time until|damage taken|incoming damage|base attack time|\bbat\b|fade time|backswing|buyback|travel time|wind[- ]?up|bounty lost/i;
+  /cooldown|mana cost|health cost|manacost|\bcost\b|cast point|attack point|cast time|channel(ing)? time|restore time|replenish|recharge|charge time|respawn|\bdelay\b|(?<!\/)self[- ](damage|slow)|on self|loss on death|resistance loss|charge loss|time until|damage taken|incoming damage|base attack time|\bbat\b|fade time|backswing|buyback|travel time|wind[- ]?up|bounty lost/i;
+// Drawback-or-effect words whose polarity depends on who they apply to; left unscored.
+const AMBIGUOUS = /\bpenalty\b|\bloss\b/i;
 const HIGHER_FIRST = /reduction|amplification|\breduce/i;
 const FORMULA_RE = /\bper\b|\bat level\b|\d\s*[+*x]\s*\d|\(/i;
 const DEFAULT_MAG = 0.15;
@@ -118,15 +120,18 @@ function valuePart(s: string): string {
   return s.split(/\s+\(|,\s|\s+(?:for|when|if|on|against|with)\s/i)[0]!.trim();
 }
 
-function scoreSentence(s: string): { dir: number; mag: number } | null {
+function scoreSentence(s: string): { dir: number; mag: number } | "ambiguous" | null {
   const m = s.match(VERB_RE);
   if (!m) return null;
   const subject = m[1]!;
   // Ability descriptions ("..., the curse damage and radius will be increased by 66%") are not change lines.
   if (subject.includes(",") || /\b(is|are|be|was)$/i.test(subject)) return null;
+  // Polarity belongs to the head noun: "DPS per cooldown" is DPS, not a cooldown.
+  const head = subject.replace(/\s+per\s+.*$/i, "");
+  if (AMBIGUOUS.test(head) && !LOWER_BETTER.test(head)) return "ambiguous";
   const verb = m[2]!.toLowerCase();
   const verbUp = verb === "increased" || verb === "raised" || verb === "improved";
-  const polarity = verb === "improved" ? 1 : HIGHER_FIRST.test(subject) ? 1 : LOWER_BETTER.test(subject) ? -1 : 1;
+  const polarity = verb === "improved" ? 1 : HIGHER_FIRST.test(head) ? 1 : LOWER_BETTER.test(head) ? -1 : 1;
   let mag = DEFAULT_MAG;
   if (m[3]!.toLowerCase() === "from") {
     const [fromRaw, toRaw] = m[4]!.split(/\s+to\s+/i);
@@ -148,9 +153,11 @@ export function classify(text: string, weight: number): { direction: Direction; 
   if (total.length) sentences = total;
   let score = 0;
   let scored = false;
+  let ambiguous = false;
   for (const s of sentences) {
     const r = scoreSentence(s);
-    if (r) {
+    if (r === "ambiguous") ambiguous = true;
+    else if (r) {
       score += r.dir * r.mag;
       scored = true;
     }
@@ -161,7 +168,7 @@ export function classify(text: string, weight: number): { direction: Direction; 
     return { direction: score > 0 ? "buff" : "nerf", score };
   }
   if (/\bunchanged\b/i.test(text)) return { direction: "info", score: 0 };
-  if (UNCLEAR_RE.test(text) || /\b(increased|decreased|improved)\b/i.test(text)) return { direction: "unclear", score: 0 };
+  if (ambiguous || UNCLEAR_RE.test(text) || /\b(increased|decreased|reduced|lowered|raised|improved)\b/i.test(text)) return { direction: "unclear", score: 0 };
   return { direction: "info", score: 0 };
 }
 
@@ -411,7 +418,13 @@ async function loadPatch(requested: string | undefined): Promise<Patch> {
     if (err instanceof NotFoundError || (err instanceof DotaError && /not a patch version/.test(err.message))) throw err;
     if (!(err instanceof DotaError) && !(err instanceof TypeError)) throw err;
     const reason = err instanceof RateLimitError ? "rate limited" : err.message.split(/\.\s/)[0]!.replace(/\.$/, "");
-    return fromOpenDota(requested, reason);
+    try {
+      return await fromOpenDota(requested, reason);
+    } catch (fallbackErr) {
+      if (fallbackErr instanceof NotFoundError) throw fallbackErr;
+      const msg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+      throw new DotaError(`Valve datafeed failed (${reason}); OpenDota fallback also failed: ${msg}`);
+    }
   }
 }
 
