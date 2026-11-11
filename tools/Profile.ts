@@ -1,6 +1,16 @@
 import { output, parseCli, sourceLine, table } from "../lib/cli.ts";
 import { DotaError, main } from "../lib/errors.ts";
-import { PROFILE_FILE, type Account, loadProfile, parseAccountId, profileAccounts, saveProfile } from "../lib/profile.ts";
+import {
+  PROFILE_FILE,
+  type Account,
+  addAlt,
+  loadProfile,
+  parseAccountId,
+  profileAccounts,
+  removeAccount,
+  saveProfile,
+  setMain,
+} from "../lib/profile.ts";
 import { getPlayer, rankName } from "../lib/players.ts";
 
 const USAGE = `bun run tools/Profile.ts [command] [--label=NAME] [--json]
@@ -31,34 +41,19 @@ await main(async () => {
       break;
     case "set-main": {
       if (!rest[0]) throw new DotaError(`set-main needs an account.\nUsage: ${USAGE}`);
-      const acc = await verify(parseAccountId(rest[0]), label ?? "main");
-      profile.alts = profile.alts.filter((a) => a.account_id !== acc.account_id);
-      if (profile.main && profile.main.account_id !== acc.account_id) {
-        changed = `Main set to ${acc.persona ?? acc.account_id}. Previous main ${profile.main.account_id} kept as an alt.`;
-        profile.alts.push({ ...profile.main, label: profile.main.label === "main" ? "old main" : profile.main.label });
-      } else {
-        changed = `Main set to ${acc.persona ?? acc.account_id}.`;
-      }
-      profile.main = acc;
+      changed = setMain(profile, await verify(parseAccountId(rest[0]), label ?? "main"));
       break;
     }
     case "add-alt": {
       if (!rest[0]) throw new DotaError(`add-alt needs an account.\nUsage: ${USAGE}`);
       const id = parseAccountId(rest[0]);
       if (profile.main?.account_id === id) throw new DotaError(`${id} is already the main account.`);
-      const acc = await verify(id, label);
-      profile.alts = [...profile.alts.filter((a) => a.account_id !== id), acc];
-      changed = `Alt ${acc.persona ?? id} saved.`;
+      changed = addAlt(profile, await verify(id, label));
       break;
     }
     case "remove": {
       if (!rest[0]) throw new DotaError(`remove needs an account.\nUsage: ${USAGE}`);
-      const id = parseAccountId(rest[0]);
-      const before = profileAccounts(profile).length;
-      if (profile.main?.account_id === id) delete profile.main;
-      profile.alts = profile.alts.filter((a) => a.account_id !== id);
-      if (profileAccounts(profile).length === before) throw new DotaError(`${id} is not in the profile.`);
-      changed = `Removed ${id}.`;
+      changed = removeAccount(profile, parseAccountId(rest[0]));
       break;
     }
     case "note": {

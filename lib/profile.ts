@@ -22,6 +22,18 @@ export interface Profile {
   notes?: string;
   /** Shared secret Dota's GSI config sends to WatchMatches. */
   gsi_token?: string;
+  /** Dota install folder chosen in the dashboard. */
+  dota_dir?: string;
+  /** Watcher settings saved from the dashboard. */
+  watch?: {
+    port?: number;
+    gsi?: boolean;
+    pollMin?: number;
+    parse?: boolean;
+    review?: boolean;
+    waitMin?: number;
+    autostart?: boolean;
+  };
 }
 
 const STEAM64_BASE = 76561197960265728n;
@@ -47,6 +59,32 @@ export function profileAccounts(p: Profile): (Account & { role: "main" | "alt" }
     ...(p.main ? [{ ...p.main, role: "main" as const }] : []),
     ...p.alts.map((a) => ({ ...a, role: "alt" as const })),
   ];
+}
+
+/** Make `acc` the main account. A previous main is kept as an alt. Returns a message. */
+export function setMain(p: Profile, acc: Account): string {
+  p.alts = p.alts.filter((a) => a.account_id !== acc.account_id);
+  let msg = `Main set to ${acc.persona ?? acc.account_id}.`;
+  if (p.main && p.main.account_id !== acc.account_id) {
+    msg += ` Previous main ${p.main.persona ?? p.main.account_id} kept as an alt.`;
+    p.alts.push({ ...p.main, label: p.main.label === "main" ? "old main" : p.main.label });
+  }
+  p.main = acc;
+  return msg;
+}
+
+export function addAlt(p: Profile, acc: Account): string {
+  if (p.main?.account_id === acc.account_id) throw new DotaError(`${acc.account_id} is already the main account.`);
+  p.alts = [...p.alts.filter((a) => a.account_id !== acc.account_id), acc];
+  return `Alt ${acc.persona ?? acc.account_id} saved.`;
+}
+
+export function removeAccount(p: Profile, id: number): string {
+  const before = profileAccounts(p).length;
+  if (p.main?.account_id === id) delete p.main;
+  p.alts = p.alts.filter((a) => a.account_id !== id);
+  if (profileAccounts(p).length === before) throw new DotaError(`${id} is not in the profile.`);
+  return `Removed ${id}.`;
 }
 
 /** Display name for an account: label, then persona, then id. */

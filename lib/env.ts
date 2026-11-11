@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -28,3 +28,34 @@ function load(): void {
 }
 
 load();
+
+/**
+ * Set or remove one variable in <skill dir>/.env, keeping comments and other
+ * lines. Also updates process.env so the running process sees the change.
+ */
+export function setEnvValue(name: string, value: string | null): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error(`Invalid variable name "${name}"`);
+  if (value !== null && /[\r\n]/.test(value)) throw new Error(`${name} cannot contain line breaks`);
+  let lines: string[] = [];
+  try {
+    lines = readFileSync(ENV_FILE, "utf8").split(/\r?\n/);
+  } catch {}
+  if (lines.length && lines[lines.length - 1] === "") lines.pop();
+  const re = new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=`);
+  const kept = lines.filter((l) => !re.test(l));
+  if (value !== null && value !== "") {
+    // Quote so a trailing " #..." is not read back as a comment. The loader does no escaping.
+    let out = value;
+    if (/[\s#"'$]/.test(value)) {
+      if (!value.includes("'")) out = `'${value}'`;
+      else if (!value.includes('"')) out = `"${value}"`;
+      else throw new Error(`${name} cannot contain both ' and " quotes`);
+    }
+    kept.push(`${name}=${out}`);
+  }
+  const tmp = `${ENV_FILE}.${process.pid}.tmp`;
+  writeFileSync(tmp, kept.join("\n") + "\n", { mode: 0o600 });
+  renameSync(tmp, ENV_FILE);
+  if (value === null || value === "") delete process.env[name];
+  else process.env[name] = value;
+}
