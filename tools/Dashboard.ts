@@ -25,6 +25,7 @@ import {
   DEFAULT_GSI_PORT,
   REVIEWS_DIR,
   SKILL_DIR,
+  type Finished,
   Watcher,
   ensureGsiToken,
   findDotaDir,
@@ -45,15 +46,31 @@ On start it checks GitHub for a newer version of the skill and installs it first
 your profile.json, .env and reviews/ are never touched). --no-update skips that for one run; the
 "Update automatically" setting on the page turns it off for good.`;
 
+/** Set while this process only waits for a restarted copy of itself; signals go to that copy. */
+let reexecChild: ReturnType<typeof Bun.spawn> | null = null;
+
+for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+  try {
+    process.on(sig, () => {
+      // Pass the signal on so killing this (outer) process also stops the restarted dashboard,
+      // which holds the ports. It exits, and this process exits with it below.
+      if (reexecChild) reexecChild.kill(sig);
+      else process.exit(0);
+    });
+  } catch {
+    // SIGHUP cannot be handled on Windows.
+  }
+}
+
 /** Run this same command again in a child process and exit with its code (after an update). */
 async function reexec(env: Record<string, string>, extraArgs: string[] = []): Promise<never> {
   const argv = [...process.argv.slice(1), ...extraArgs.filter((a) => !process.argv.includes(a))];
-  const child = Bun.spawn([process.execPath, ...argv], {
+  reexecChild = Bun.spawn([process.execPath, ...argv], {
     cwd: process.cwd(),
     env: { ...process.env, ...env },
     stdio: ["inherit", "inherit", "inherit"],
   });
-  process.exit(await child.exited);
+  process.exit(await reexecChild.exited);
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -115,8 +132,7 @@ function launcherFile(url: string): string {
       { mode: 0o600 },
     );
     const cleanup = () => rmSync(dir, { recursive: true, force: true });
-    process.on("exit", cleanup);
-    for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => process.exit(0));
+    process.on("exit", cleanup); // the signal handlers at the top exit through here
     return pathToFileURL(file).href;
   } catch {
     return url;
@@ -440,15 +456,26 @@ await main(async () => {
     }
 
     if (method === "POST" && path === "/api/update/apply") {
-      const st = watcher.status();
-      if (st.current || st.queue.length) throw new HttpError(409, "A review is running. Update when it finishes.");
-      const r = await applyUpdate();
-      updateStatus = r.status;
-      if (r.error) throw new HttpError(500, `Update failed: ${r.error}`);
-      if (!r.updated) throw new HttpError(409, r.status.message);
-      // Restart on the new code after this response is sent, on the same port and token.
-      setTimeout(() => void restartAfterUpdate(st.running), 300);
-      return json({ message: `${r.status.message} Restarting the dashboard; the page reconnects in a few seconds.`, restarting: true });
+      // Hold new reviews first, then check nothing is running: a match that ends during the fetch
+      // stays queued and is handed to the restarted process instead of running on replaced files.
+      watcher.hold(true);
+      let restarting = false;
+      let message = "";
+      try {
+        if (watcher.status().current) throw new HttpError(409, "A review is running. Update when it finishes.");
+        const r = await applyUpdate();
+        updateStatus = r.status;
+        if (r.error) throw new HttpError(500, `Update failed: ${r.error}`);
+        if (!r.updated) throw new HttpError(409, r.status.message);
+        restarting = true;
+        message = r.status.message;
+        // Restart on the new code after this response is sent, on the same port and token.
+        const running = watcher.running;
+        setTimeout(() => void restartAfterUpdate(running), 300);
+      } finally {
+        if (!restarting) watcher.hold(false);
+      }
+      return json({ message: `${message} Restarting the dashboard; the page reconnects in a few seconds.`, restarting: true });
     }
 
     if (method === "GET" && path === "/api/reviews") return json({ reviews: listReviews() });
@@ -470,8 +497,14 @@ await main(async () => {
     process.stdout.write("\nSkill updated. Restarting on the new version...\n\n");
     watcher.stop();
     server?.stop(true);
+    const pending = watcher.takeQueue();
     await reexec(
-      { DOTACOACH_UPDATED: "1", DOTACOACH_SESSION_TOKEN: sessionToken, ...(watcherWasRunning ? { DOTACOACH_RESUME_WATCHER: "1" } : {}) },
+      {
+        DOTACOACH_UPDATED: "1",
+        DOTACOACH_SESSION_TOKEN: sessionToken,
+        ...(watcherWasRunning ? { DOTACOACH_RESUME_WATCHER: "1" } : {}),
+        ...(pending.length ? { DOTACOACH_PENDING_REVIEWS: JSON.stringify(pending) } : {}),
+      },
       ["--no-open"],
     );
   }
@@ -561,6 +594,12 @@ await main(async () => {
       watcher.log(`Watcher did not start: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+  // Reviews that were queued in the process that installed the update.
+  try {
+    const pending = JSON.parse(process.env.DOTACOACH_PENDING_REVIEWS ?? "[]") as Finished[];
+    for (const f of pending) if (Number.isInteger(f?.matchId) && f.matchId > 0) watcher.enqueue(f, true);
+  } catch {}
+  delete process.env.DOTACOACH_PENDING_REVIEWS;
   delete process.env.DOTACOACH_RESUME_WATCHER;
   delete process.env.DOTACOACH_UPDATED;
   if (!args.flags["no-open"]) openBrowser(launcherFile(url));

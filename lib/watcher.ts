@@ -271,9 +271,25 @@ export class Watcher {
   }
 
   private draining: Promise<void> | null = null;
+  private held = false;
+
+  /**
+   * Stop starting new reviews (they stay queued) or resume. Used while the skill updates
+   * itself, so no review runs on files that are being replaced.
+   */
+  hold(on: boolean): void {
+    this.held = on;
+    if (!on) void this.drain();
+  }
+
+  /** Remove and return everything still queued (handed to the restarted process after an update). */
+  takeQueue(): Finished[] {
+    return this.queue.splice(0);
+  }
 
   /** Process the queue; resolves when it is empty. Concurrent callers share one run. */
   drain(): Promise<void> {
+    if (this.held) return this.draining ?? Promise.resolve();
     this.draining ??= this.runQueue().finally(() => {
       this.draining = null;
     });
@@ -281,7 +297,7 @@ export class Watcher {
   }
 
   private async runQueue(): Promise<void> {
-    while (this.queue.length) {
+    while (this.queue.length && !this.held) {
       this.current = this.queue.shift()!;
       try {
         await this.afterMatch(this.current);
