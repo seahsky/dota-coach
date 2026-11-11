@@ -1,9 +1,10 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { platform } from "node:os";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { platform, tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
 import { join } from "node:path";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { intFlag, parseCli } from "../lib/cli.ts";
-import { ENV_FILE, fromEnvironment, setEnvValue } from "../lib/env.ts";
+import { ENV_FILE, fromEnvironment, setEnvValue, setInEnvironment } from "../lib/env.ts";
 import { DotaError, main } from "../lib/errors.ts";
 import { heroName } from "../lib/heroes.ts";
 import { getPlayer, getPlayerMatches, playerWon, rankName } from "../lib/players.ts";
@@ -79,6 +80,28 @@ function openBrowser(url: string): void {
     p.exited.catch(() => {});
   } catch {
     // No browser launcher (headless box, WSL without wslu): the URL is printed anyway.
+  }
+}
+
+/**
+ * Like Jupyter: open the browser on a private redirect file instead of the token URL, so the
+ * token never appears in a process command line (readable by other users on Linux via ps).
+ */
+function launcherFile(url: string): string {
+  try {
+    const dir = mkdtempSync(join(tmpdir(), "dotacoach-"));
+    const file = join(dir, "open-dashboard.html");
+    writeFileSync(
+      file,
+      `<!doctype html><meta charset=utf-8><meta http-equiv="refresh" content="0;url=${url}"><title>DotaCoach Setup</title><a href="${url}">Open the DotaCoach dashboard</a>`,
+      { mode: 0o600 },
+    );
+    const cleanup = () => rmSync(dir, { recursive: true, force: true });
+    process.on("exit", cleanup);
+    for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => process.exit(0));
+    return pathToFileURL(file).href;
+  } catch {
+    return url;
   }
 }
 
@@ -256,9 +279,11 @@ await main(async () => {
       } catch (err) {
         throw new HttpError(400, err instanceof Error ? err.message : String(err));
       }
-      const note = fromEnvironment("STRATZ_API_KEY")
-        ? " STRATZ_API_KEY is also set in your shell or system environment, which wins after a restart; change or remove it there."
-        : "";
+      const note = !setInEnvironment("STRATZ_API_KEY")
+        ? ""
+        : key
+          ? " STRATZ_API_KEY is also set in your shell or system environment, which wins after a restart; change or remove it there."
+          : " STRATZ_API_KEY is still set in your shell or system environment, so that key stays in use; remove it there to turn STRATZ off.";
       return json({ message: (key ? "STRATZ key saved to .env." : "STRATZ key removed from .env.") + note });
     }
 
@@ -377,6 +402,8 @@ await main(async () => {
   const serve = () => Bun.serve({
     hostname: "127.0.0.1",
     port,
+    // OpenDota can take 15s+ per call; Bun's default 10s idle timeout would drop /api/matches and /api/accounts.
+    idleTimeout: 120,
     async fetch(req) {
       const url = new URL(req.url);
       // DNS-rebinding guard: a page on another site resolved to 127.0.0.1 still sends its own Host.
@@ -447,5 +474,5 @@ await main(async () => {
       watcher.log(`Watcher did not start: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
-  if (!args.flags["no-open"]) openBrowser(url);
+  if (!args.flags["no-open"]) openBrowser(launcherFile(url));
 });

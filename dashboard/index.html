@@ -412,6 +412,7 @@ function renderData() {
 
 let lastMatches = null;
 let matchesKey = "";
+let pendingFocus = null;
 function renderMatches(data, force = true) {
   lastMatches = data;
   const reviewed = new Set(S ? S.reviews.map((r) => r.matchId) : []);
@@ -421,7 +422,8 @@ function renderMatches(data, force = true) {
   if (!force && key === matchesKey) return;
   matchesKey = key;
   const focused = document.activeElement?.closest?.("#matchesTable button");
-  const focusSel = focused ? (focused.dataset.view ? `[data-view="${focused.dataset.view}"]` : `[data-review="${focused.dataset.review}"]`) : null;
+  const focusId = focused ? focused.dataset.view || focused.dataset.review : pendingFocus;
+  pendingFocus = null;
   if (!data.matches.length) {
     $("matchesTable").innerHTML = `<div class="empty">${data.errors.length ? esc(data.errors.join("; ")) : "No matches found. Is Expose Public Match Data on in Dota's settings?"}</div>`;
     return;
@@ -443,10 +445,8 @@ function renderMatches(data, force = true) {
         <td style="text-align:right">${action}</td></tr>`;
     })
     .join("")}</tbody></table>${data.errors.length ? `<p class="hint">${esc(data.errors.join("; "))}</p>` : ""}`;
-  if (focusSel) {
-    const b = $("matchesTable").querySelector(`[data-view="${focused.dataset.review ?? focused.dataset.view}"], ${focusSel}`);
-    b?.focus();
-  }
+  // The button may have turned from Review into View review; either one for the same match keeps focus.
+  if (focusId) $("matchesTable").querySelector(`[data-view="${focusId}"], [data-review="${focusId}"]`)?.focus();
 }
 
 function render() {
@@ -531,14 +531,24 @@ async function loadAccounts() {
   renderAccounts(r.accounts);
 }
 async function loadMatches(btn) {
+  // Remember keyboard focus: the table is rebuilt below and renderMatches restores it by match id.
+  const f = document.activeElement?.closest?.("#matchesTable button");
+  if (f) pendingFocus = f.dataset.view || f.dataset.review;
   if (!S.accounts.length) {
     lastMatches = null;
     matchesKey = "";
     $("matchesTable").innerHTML = `<div class="empty">Add an account to see matches.</div>`;
     return;
   }
-  $("matchesTable").innerHTML = `<div class="empty">Loading…</div>`;
-  await busy(btn, async () => renderMatches(await api("/api/matches?count=10")));
+  if (!lastMatches) $("matchesTable").innerHTML = `<div class="empty">Loading…</div>`;
+  await busy(btn, async () => {
+    try {
+      renderMatches(await api("/api/matches?count=10"));
+    } catch (e) {
+      if (!lastMatches) $("matchesTable").innerHTML = `<div class="empty">Could not load matches: ${esc(e.message)} Try Refresh.</div>`;
+      throw e;
+    }
+  });
 }
 async function loadConfig() {
   try { $("gsiConfig").textContent = (await api("/api/gsi/config")).config; } catch (e) { $("gsiConfig").textContent = e.message; }

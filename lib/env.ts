@@ -22,8 +22,10 @@ function parseFile(): Map<string, string> {
     const m = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
     if (!m) continue;
     let value = m[2]!;
-    const quoted = value.match(/^(["'])(.*)\1$/);
-    value = quoted ? quoted[2]! : value.replace(/\s+#.*$/, "");
+    // Match Bun's dotenv for the common cases: a quoted value may be followed by a comment,
+    // and an unquoted value ends at the first #.
+    const quoted = value.match(/^(["'])(.*?)\1\s*(?:#.*)?$/);
+    value = quoted ? quoted[2]! : value.replace(/#.*$/, "").trim();
     vars.set(m[1]!, value);
   }
   return vars;
@@ -34,24 +36,29 @@ function parseFile(): Map<string, string> {
  * ./.env when run from the skill folder, so a variable that is already set
  * with the same value as the file came from the file, not the environment.
  */
-const INHERITED = new Set<string>();
+const INHERITED = new Map<string, string>();
 
 function load(): void {
   const file = parseFile();
   for (const [name, value] of file) {
     const cur = process.env[name];
     if (cur === undefined) process.env[name] = value;
-    else if (cur !== value) INHERITED.add(name);
+    // A file value with $ is expanded by Bun's loader, so a mismatch there proves nothing.
+    else if (cur !== value && !value.includes("$")) INHERITED.set(name, cur);
   }
   for (const name of ["STRATZ_API_KEY", "DOTACOACH_ON_MATCH"]) {
-    if (process.env[name] !== undefined && !file.has(name)) INHERITED.add(name);
+    const cur = process.env[name];
+    if (cur !== undefined && !file.has(name)) INHERITED.set(name, cur);
   }
 }
 
 load();
 
-/** True when `name` comes from the shell or system environment, which wins over .env. */
-export const fromEnvironment = (name: string) => INHERITED.has(name) && Boolean(process.env[name]);
+/** True when the shell or system environment sets `name`; that value wins over .env at the next start. */
+export const setInEnvironment = (name: string) => Boolean(INHERITED.get(name));
+
+/** True when the value in use right now is the one from the shell or system environment. */
+export const fromEnvironment = (name: string) => setInEnvironment(name) && process.env[name] === INHERITED.get(name);
 
 /**
  * Set or remove one variable in <skill dir>/.env, keeping comments and other
@@ -75,6 +82,10 @@ export function setEnvValue(name: string, value: string | null): void {
   const tmp = `${ENV_FILE}.${process.pid}.tmp`;
   writeFileSync(tmp, kept.join("\n") + "\n", { mode: 0o600 });
   renameSync(tmp, ENV_FILE);
-  if (value === null || value === "") delete process.env[name];
-  else process.env[name] = value;
+  // Removing the .env line brings back the shell's value (it wins at the next start anyway).
+  if (value === null || value === "") {
+    const inherited = INHERITED.get(name);
+    if (inherited) process.env[name] = inherited;
+    else delete process.env[name];
+  } else process.env[name] = value;
 }
