@@ -1,3 +1,4 @@
+import "./env.ts";
 import { mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";

@@ -1,3 +1,4 @@
+import "./env.ts";
 import { cacheGet, cacheSet } from "./cache.ts";
 import { DotaError } from "./errors.ts";
 

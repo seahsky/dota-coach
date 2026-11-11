@@ -24,11 +24,17 @@ A Claude Code skill that turns Claude into a Dota 2 coach. Claude pulls live dat
 
    The tools have no runtime dependencies, so there is no install step. Run `bun install` only if you want to typecheck.
 
-3. Optional: set a STRATZ key. Get a token at stratz.com/api, then add it to your shell profile:
+3. Optional: set a STRATZ key. Get a token at stratz.com/api, then copy the example env file and paste the token in:
 
    ```bash
-   export STRATZ_API_KEY="your-token"
+   cp ~/.claude/skills/DotaCoach/.env.example ~/.claude/skills/DotaCoach/.env
    ```
+
+   ```
+   STRATZ_API_KEY=your-token
+   ```
+
+   The tools read this `.env` from the skill folder wherever they are run from, and git ignores it. A `STRATZ_API_KEY` exported in your shell takes precedence over the file.
 
    Without it, every tool still works on OpenDota and says so in its source line. With it, `GetHeroStats --role` uses STRATZ ranked per-position data and `GetMatchups` uses STRATZ matchups, with `--bracket` support. If a STRATZ call fails, the tool falls back to OpenDota and prints the reason.
 
@@ -83,11 +89,13 @@ tests/        resolver tests and the live smoke test
 
 Responses are cached in `~/.cache/dotacoach/` (or `$XDG_CACHE_HOME/dotacoach`). Hero and item constants are kept 24h, stats and patch notes 6h, parsed matches forever, and unparsed matches 1h so a later parse shows up. If an API is down or rate-limits you, the tools fall back to an expired cache entry and print a note. OpenDota's free tier allows about 60 requests per minute and 3,000 per day.
 
-Environment variables:
+Environment variables (shell or `.env`):
 
 | Variable | Effect |
 | --- | --- |
 | `STRATZ_API_KEY` | Enables the STRATZ data paths. |
+
+Any of these can go in the skill folder's `.env` file instead of your shell.
 | `DOTACOACH_NO_CACHE=1` | Skip the cache for this run. |
 | `DOTACOACH_CACHE_DIR` | Use a different cache directory. |
 | `DOTACOACH_DEBUG=1` | Print stack traces on unexpected errors. |
