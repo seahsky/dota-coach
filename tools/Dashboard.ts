@@ -3,7 +3,7 @@ import { platform } from "node:os";
 import { join } from "node:path";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { intFlag, parseCli } from "../lib/cli.ts";
-import { ENV_FILE, setEnvValue } from "../lib/env.ts";
+import { ENV_FILE, fromEnvironment, setEnvValue } from "../lib/env.ts";
 import { DotaError, main } from "../lib/errors.ts";
 import { heroName } from "../lib/heroes.ts";
 import { getPlayer, getPlayerMatches, playerWon, rankName } from "../lib/players.ts";
@@ -11,6 +11,7 @@ import {
   PROFILE_FILE,
   addAlt,
   loadProfile,
+  onMatchCommand,
   parseAccountId,
   profileAccounts,
   removeAccount,
@@ -33,9 +34,10 @@ import {
 
 const USAGE = `bun run tools/Dashboard.ts [--port=N] [--no-open]
 
-Opens a local setup page at http://127.0.0.1:<port>/ (default 3743): your accounts and notes, the
-STRATZ key, the Dota 2 Game State Integration config, the post-game watcher, and saved reviews.
-The page only listens on this computer. Ctrl+C to stop; the watcher stops with it.`;
+Opens a local setup page at http://127.0.0.1:<port>/?t=<token> (default port 3743): your accounts and
+notes, the STRATZ key, the Dota 2 Game State Integration config, the post-game watcher, and saved
+reviews. The page only listens on this computer, and only the link printed in the terminal opens it
+(the token changes every run). Ctrl+C to stop; the watcher stops with it.`;
 
 const HTML_FILE = join(SKILL_DIR, "dashboard", "index.html");
 
@@ -82,6 +84,7 @@ function openBrowser(url: string): void {
 
 function watcherOptions() {
   const w = loadProfile().watch ?? {};
+  // autostart is a dashboard setting, not a Watcher option; Watcher ignores the extra field.
   return {
     port: w.port ?? DEFAULT_GSI_PORT,
     gsi: w.gsi ?? true,
@@ -119,7 +122,7 @@ await main(async () => {
 
   const print = ({ at, text }: { at: number; text: string }) =>
     process.stdout.write(text.startsWith("\n") ? `${text}\n` : `[${new Date(at).toLocaleTimeString()}] ${text}\n`);
-  let watcher = new Watcher(watcherOptions(), print);
+  const watcher = new Watcher(watcherOptions(), print);
 
   // ---------- API handlers ----------
 
@@ -147,8 +150,11 @@ await main(async () => {
       envFile: ENV_FILE,
       accounts: profileAccounts(profile),
       notes: profile.notes ?? "",
-      stratz: { set: hasStratzKey(), masked: maskKey(process.env.STRATZ_API_KEY) },
-      onMatch: process.env.DOTACOACH_ON_MATCH ?? "",
+      stratz: { set: hasStratzKey(), masked: maskKey(process.env.STRATZ_API_KEY), fromEnvironment: fromEnvironment("STRATZ_API_KEY") },
+      onMatch: profile.watch?.onMatch ?? "",
+      onMatchEffective: onMatchCommand(profile),
+      onMatchFromEnv: !profile.watch?.onMatch && Boolean(process.env.DOTACOACH_ON_MATCH?.trim()),
+      dashboardPort: port,
       claudeOnPath: Boolean(Bun.which("claude")),
       gsi: {
         dotaDir: dotaDir ?? null,
@@ -214,18 +220,22 @@ await main(async () => {
 
     if (method === "POST" && path === "/api/accounts") {
       const action = str(body.action, "action", 20);
-      const profile = loadProfile();
       let message: string;
       if (action === "remove") {
+        const profile = loadProfile();
         message = removeAccount(profile, parseAccountId(str(body.account, "account", 300)));
+        saveProfile(profile);
       } else if (action === "set-main" || action === "add-alt") {
         const label = typeof body.label === "string" ? body.label.trim().slice(0, 40) || undefined : undefined;
+        // Verify first: the OpenDota call can take seconds, and loading the profile before it
+        // would overwrite notes or settings saved in the meantime.
         const acc = await verifyAccount(str(body.account, "account", 300), action === "set-main" ? (label ?? "main") : label);
+        const profile = loadProfile();
         message = action === "set-main" ? setMain(profile, acc) : addAlt(profile, acc);
+        saveProfile(profile);
       } else {
         throw new HttpError(400, `Unknown action "${action}".`);
       }
-      saveProfile(profile);
       return json({ message, accounts: await accountsWithRank() });
     }
 
@@ -241,8 +251,15 @@ await main(async () => {
     if (method === "POST" && path === "/api/stratz") {
       const key = body.key === null ? null : str(body.key, "key", 4000).trim();
       if (key && !/^[\x21-\x7e]+$/.test(key)) throw new HttpError(400, "That does not look like a STRATZ token (spaces or unusual characters).");
-      setEnvValue("STRATZ_API_KEY", key || null);
-      return json({ message: key ? "STRATZ key saved to .env." : "STRATZ key removed.", stratz: { set: hasStratzKey(), masked: maskKey(process.env.STRATZ_API_KEY) } });
+      try {
+        setEnvValue("STRATZ_API_KEY", key || null);
+      } catch (err) {
+        throw new HttpError(400, err instanceof Error ? err.message : String(err));
+      }
+      const note = fromEnvironment("STRATZ_API_KEY")
+        ? " STRATZ_API_KEY is also set in your shell or system environment, which wins after a restart; change or remove it there."
+        : "";
+      return json({ message: (key ? "STRATZ key saved to .env." : "STRATZ key removed from .env.") + note });
     }
 
     if (method === "POST" && path === "/api/stratz/test") {
@@ -258,8 +275,18 @@ await main(async () => {
 
     if (method === "POST" && path === "/api/settings") {
       const onMatch = str(body.onMatch, "onMatch", 1000).trim();
-      setEnvValue("DOTACOACH_ON_MATCH", onMatch || null);
-      return json({ message: onMatch ? "Custom after-match command saved to .env." : "Custom command cleared; reviews use claude -p." });
+      if (/[\r\n]/.test(onMatch)) throw new HttpError(400, "The command must be one line.");
+      const profile = loadProfile();
+      profile.watch = { ...profile.watch, onMatch: onMatch || undefined };
+      saveProfile(profile);
+      const env = process.env.DOTACOACH_ON_MATCH?.trim();
+      return json({
+        message: onMatch
+          ? "After-match command saved."
+          : env
+            ? "Command cleared here, but DOTACOACH_ON_MATCH is still set in your environment or .env, so that command runs."
+            : "Command cleared; reviews use claude -p.",
+      });
     }
 
     if (method === "GET" && path === "/api/gsi/config") {
@@ -288,25 +315,29 @@ await main(async () => {
       };
       if (next.port === port) throw new HttpError(400, `Port ${port} is the dashboard's own port. Pick another for GSI.`);
       if (!next.gsi && next.pollMin === 0) throw new HttpError(400, "Turn on GSI or polling, or the watcher has nothing to listen to.");
-      const profile = loadProfile();
-      profile.watch = next;
-      saveProfile(profile);
       const restart = watcher.running;
-      const portChanged = next.port !== cur.port;
-      if (restart) watcher.stop();
-      const old = watcher;
-      watcher = new Watcher(next, print);
-      for (const l of old.status().log) watcher.log(l.text);
-      if (restart) await watcher.start();
+      try {
+        // Same Watcher instance: a review in progress and the queue are kept.
+        await watcher.reconfigure(next);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new HttpError(400, `Settings not saved: ${msg} The watcher kept its previous settings${watcher.running ? " and is still running" : ""}.`);
+      }
+      const profile = loadProfile();
+      profile.watch = { ...profile.watch, ...next };
+      saveProfile(profile);
       return json({
         message:
           "Watcher settings saved." +
           (restart ? " Watcher restarted." : "") +
-          (portChanged ? " The GSI port changed: install the GSI config again so Dota uses the new port." : ""),
+          (next.port !== cur.port ? " The GSI port changed: install the GSI config again so Dota uses the new port." : ""),
       });
     }
 
     if (method === "POST" && path === "/api/watcher/start") {
+      if (watcher.opts.gsi && watcher.opts.port === port) {
+        throw new HttpError(400, `The GSI port (${port}) is the dashboard's own port. Change the GSI port in the watcher settings.`);
+      }
       await watcher.start();
       return json({ message: "Watcher started." });
     }
@@ -323,7 +354,8 @@ await main(async () => {
     if (method === "POST" && path === "/api/review") {
       const matchId = int(body.matchId, "matchId", 1, Number.MAX_SAFE_INTEGER);
       const accountId = body.accountId === undefined ? loadProfile().main?.account_id ?? 0 : int(body.accountId, "accountId", 0, 0xffffffff);
-      const queued = watcher.enqueue({ matchId, accountId, via: "dashboard" }, true);
+      const hero = typeof body.hero === "string" && body.hero.trim() ? body.hero.trim().slice(0, 40) : undefined;
+      const queued = watcher.enqueue({ matchId, accountId, hero, via: "dashboard" }, true);
       return json({ message: queued ? `Match ${matchId} queued for review.` : `Match ${matchId} is already being reviewed.` });
     }
 
@@ -351,6 +383,17 @@ await main(async () => {
       if (!allowedHosts.has(req.headers.get("host") ?? "")) return new Response("Bad host", { status: 421 });
 
       if (url.pathname === "/" && req.method === "GET") {
+        // Like Jupyter: only the link printed in the terminal (with ?t=) gets the page and its token,
+        // so another local user or process cannot just fetch it.
+        const t = Buffer.from(url.searchParams.get("t") ?? "");
+        if (t.length !== tokenBuf.length || !timingSafeEqual(t, tokenBuf)) {
+          return new Response(
+            "<!doctype html><meta charset=utf-8><title>DotaCoach Setup</title><body style=\"font:16px system-ui;max-width:40em;margin:3em auto;padding:0 16px\">" +
+              "<h1 style=\"font-size:20px\">Open the link from the terminal</h1><p>For safety this page only opens from the link <code>tools/Dashboard.ts</code> printed when it started " +
+              "(it ends in <code>?t=</code> and a code that changes every run). Copy it from the terminal window.</p>",
+            { status: 401, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } },
+          );
+        }
         const html = readFileSync(HTML_FILE, "utf8").replace("__SESSION_TOKEN__", sessionToken);
         return new Response(html, {
           headers: {
@@ -393,9 +436,11 @@ await main(async () => {
     );
   }
 
-  const url = `http://127.0.0.1:${port}/`;
-  process.stdout.write(`DotaCoach dashboard: ${url}\nCtrl+C to stop.\n`);
-  if (watcherOptions().autostart) {
+  const url = `http://127.0.0.1:${port}/?t=${sessionToken}`;
+  process.stdout.write(`DotaCoach dashboard: ${url}\nOpen that exact link (it changes every run). Ctrl+C to stop.\n`);
+  if (watcherOptions().autostart && watcher.opts.gsi && watcher.opts.port === port) {
+    watcher.log(`Watcher not started: its GSI port ${port} is the dashboard's own port. Change the GSI port in the watcher settings.`);
+  } else if (watcherOptions().autostart) {
     try {
       await watcher.start();
     } catch (err) {

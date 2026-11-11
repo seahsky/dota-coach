@@ -172,9 +172,9 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
       </div>
       <div class="fixed"><button class="primary" type="submit">Save</button></div>
     </form>
-    <h3>Coaching notes</h3>
-    <p class="hint">Main role, hero pool, goals. The coach reads these before every answer and review.</p>
-    <textarea id="notes" maxlength="2000" placeholder="e.g. Pos 1 player, Archon 3. Want better farming patterns and fewer lane deaths."></textarea>
+    <h3 id="notesHead">Coaching notes</h3>
+    <p class="hint" id="notesHint">Main role, hero pool, goals. The coach reads these before every answer and review.</p>
+    <textarea id="notes" aria-labelledby="notesHead" aria-describedby="notesHint" maxlength="2000" placeholder="e.g. Pos 1 player, Archon 3. Want better farming patterns and fewer lane deaths."></textarea>
     <div class="row" style="margin-top:8px"><button type="button" id="saveNotes">Save notes</button></div>
   </section>
 
@@ -241,7 +241,8 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
       <div class="fixed row"><button class="primary" type="submit">Save</button><button type="button" id="testStratz">Test</button><button type="button" class="danger" id="clearStratz">Remove</button></div>
     </form>
     <h3>After-match command</h3>
-    <p class="hint">Runs instead of the Claude review, e.g. to post to Discord. It gets <code>DOTACOACH_MATCH_ID</code>, <code>DOTACOACH_ACCOUNT_ID</code>, <code>DOTACOACH_HERO</code> and <code>DOTACOACH_REVIEW_FILE</code>. Leave empty to use Claude.</p>
+    <p class="hint">Runs instead of the Claude review, e.g. to post to Discord. It gets <code>DOTACOACH_MATCH_ID</code>, <code>DOTACOACH_ACCOUNT_ID</code>, <code>DOTACOACH_HERO</code> and <code>DOTACOACH_REVIEW_FILE</code> as environment variables. Leave empty to use Claude.</p>
+    <p class="hint" id="onMatchEnv" hidden></p>
     <div class="row"><div class="grow"><label for="onMatch">Command</label><input type="text" id="onMatch" placeholder="(empty: claude -p review)"></div><div class="fixed"><button type="button" id="saveOnMatch">Save</button></div></div>
     <p class="hint" id="paths"></p>
   </section>
@@ -270,6 +271,7 @@ async function api(path, body) {
   }
   const res = await fetch(path, init);
   const data = await res.json().catch(() => ({}));
+  if (res.status === 403) throw new Error("This page is from an earlier run of the dashboard. Open the new link printed in the terminal.");
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
 }
@@ -288,7 +290,11 @@ async function busy(btn, fn) {
   if (btn) btn.disabled = true;
   try { return await fn(); }
   catch (e) { toast(e.message, true); }
-  finally { if (btn) btn.disabled = false; }
+  finally {
+    if (btn) btn.disabled = false;
+    // Buttons whose state depends on the server (Start/Stop) are set by render; redo it after re-enabling.
+    if (S) renderWatcher();
+  }
 }
 function ago(ms) {
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
@@ -321,13 +327,13 @@ function renderChips() {
   const s = S;
   const hasMain = s.accounts.some((a) => a.role === "main");
   const lastGsi = s.watcher.lastGsi;
-  const gsiFresh = lastGsi && Date.now() - lastGsi.at < 120000;
+  const gsiFresh = s.watcher.running && s.watchOptions.gsi && lastGsi && Date.now() - lastGsi.at < 120000;
   $("chips").innerHTML = [
     hasMain ? chip("ok", `${s.accounts.length} account${s.accounts.length > 1 ? "s" : ""}`) : chip("bad", "No main account"),
     s.gsi.upToDate ? chip("ok", "GSI config installed") : s.gsi.installed ? chip("warn", "GSI config outdated") : chip("warn", "GSI not installed"),
     s.watcher.running ? chip("ok", "Watcher running") : chip("", "Watcher stopped"),
     gsiFresh ? chip("ok", "Dota connected") : "",
-    s.claudeOnPath || s.onMatch ? "" : chip("bad", "claude not on PATH"),
+    s.claudeOnPath || s.onMatchEffective ? "" : chip("bad", "claude not on PATH"),
     s.stratz.set ? chip("ok", "STRATZ key set") : chip("", "No STRATZ key"),
   ].join("");
 }
@@ -335,10 +341,10 @@ function renderChips() {
 function renderAccounts(list) {
   if (!list.length) {
     $("accountsTable").innerHTML = `<div class="empty">No accounts yet. Add your main account below.</div>`;
-    $("accRole").value = "set-main";
+    if (!$("accRole").dataset.touched) $("accRole").value = "set-main";
     return;
   }
-  $("accRole").value = list.some((a) => a.role === "main") ? "add-alt" : "set-main";
+  if (!$("accRole").dataset.touched) $("accRole").value = list.some((a) => a.role === "main") ? "add-alt" : "set-main";
   $("accountsTable").innerHTML = `<table><thead><tr><th>Role</th><th>Name</th><th>Rank</th><th class="hide-sm">Account</th><th></th></tr></thead><tbody>${list
     .map(
       (a) => `<tr>
@@ -381,7 +387,7 @@ function renderWatcher() {
     $("optAuto").checked = o.autostart; $("optPoll").value = o.pollMin; $("optWait").value = o.waitMin; $("optPort").value = o.port;
   }
   const how = [o.gsi ? "listens for Dota" : null, o.pollMin ? `polls OpenDota every ${o.pollMin} min` : null].filter(Boolean).join(" and ");
-  const reviewer = S.onMatch ? "runs your custom command" : S.claudeOnPath ? "writes a review with Claude Code (uses your Claude usage)" : "cannot review: claude is not on PATH";
+  const reviewer = S.onMatchEffective ? "runs your after-match command" : S.claudeOnPath ? "writes a review with Claude Code (uses your Claude usage)" : "cannot review: claude is not on PATH";
   $("watchSummary").textContent =
     `${w.running ? `Running since ${new Date(w.startedAt).toLocaleTimeString()}. ` : "Stopped. "}When a game ends it ${how || "does nothing (enable a trigger)"}, ` +
     `${o.parse ? "requests an OpenDota parse, " : ""}then ${o.review ? reviewer : "stops (reviews off)"}. Keep this terminal open while you play.`;
@@ -394,16 +400,28 @@ function renderWatcher() {
 }
 
 function renderData() {
-  $("stratzChip").innerHTML = S.stratz.set ? chip("ok", `Key ${S.stratz.masked}`) : "";
+  $("stratzChip").innerHTML = S.stratz.set
+    ? chip(S.stratz.fromEnvironment ? "warn" : "ok", S.stratz.fromEnvironment ? `Key ${S.stratz.masked} from your environment` : `Key ${S.stratz.masked}`)
+    : "";
+  const envHint = $("onMatchEnv");
+  envHint.hidden = !S.onMatchFromEnv;
+  envHint.textContent = S.onMatchFromEnv ? `DOTACOACH_ON_MATCH is set in your environment or .env, so this command runs: ${S.onMatchEffective}` : "";
   if (document.activeElement !== $("onMatch") && !$("onMatch").dataset.touched) $("onMatch").value = S.onMatch;
   $("paths").innerHTML = `Profile: <code>${esc(S.profileFile)}</code> · Settings: <code>${esc(S.envFile)}</code>`;
 }
 
 let lastMatches = null;
-function renderMatches(data) {
+let matchesKey = "";
+function renderMatches(data, force = true) {
   lastMatches = data;
   const reviewed = new Set(S ? S.reviews.map((r) => r.matchId) : []);
   const busyIds = new Set(S ? [S.watcher.current, ...S.watcher.queue].filter(Boolean).map((f) => f.matchId) : []);
+  // Polling calls this every 3s; rebuilding the table would drop keyboard focus, so skip when nothing changed.
+  const key = JSON.stringify([data.matches.map((m) => m.matchId), [...reviewed], [...busyIds], data.errors]);
+  if (!force && key === matchesKey) return;
+  matchesKey = key;
+  const focused = document.activeElement?.closest?.("#matchesTable button");
+  const focusSel = focused ? (focused.dataset.view ? `[data-view="${focused.dataset.view}"]` : `[data-review="${focused.dataset.review}"]`) : null;
   if (!data.matches.length) {
     $("matchesTable").innerHTML = `<div class="empty">${data.errors.length ? esc(data.errors.join("; ")) : "No matches found. Is Expose Public Match Data on in Dota's settings?"}</div>`;
     return;
@@ -414,7 +432,7 @@ function renderMatches(data) {
         ? `<span class="hint">reviewing…</span>`
         : reviewed.has(m.matchId)
           ? `<button class="link" data-view="${m.matchId}">View review</button>`
-          : `<button class="link" data-review="${m.matchId}" data-acc="${m.accountId}">Review</button>`;
+          : `<button class="link" data-review="${m.matchId}" data-acc="${m.accountId}" data-hero="${esc(m.hero)}">Review</button>`;
       return `<tr>
         <td>${esc(m.hero)}</td>
         <td class="${m.won ? "win" : "loss"}">${m.won ? "Win" : "Loss"}</td>
@@ -425,6 +443,10 @@ function renderMatches(data) {
         <td style="text-align:right">${action}</td></tr>`;
     })
     .join("")}</tbody></table>${data.errors.length ? `<p class="hint">${esc(data.errors.join("; "))}</p>` : ""}`;
+  if (focusSel) {
+    const b = $("matchesTable").querySelector(`[data-view="${focused.dataset.review ?? focused.dataset.view}"], ${focusSel}`);
+    b?.focus();
+  }
 }
 
 function render() {
@@ -432,20 +454,51 @@ function render() {
   renderGsi();
   renderWatcher();
   renderData();
-  if (lastMatches) renderMatches(lastMatches);
+  if (lastMatches && S.accounts.length) renderMatches(lastMatches, false);
 }
 
 // ---------- markdown (escaped first, so review text cannot inject HTML) ----------
 function inline(s) {
   return esc(s)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    // Italic only when the asterisks are not inside a word, so "2*3 and 4*5" stays as typed.
+    .replace(/(^|[^\w*])\*(?!\s)([^*]+?)\*(?![\w*])/g, "$1<em>$2</em>");
 }
+const ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
 function markdown(src) {
-  const out = [];
   const lines = src.replace(/\r/g, "").split("\n");
+  const out = [];
   let i = 0;
+  // Parse list items whose indent is >= base into nested <ul>/<ol>. Blank lines between items of
+  // the same list are allowed (Claude often writes "1. A\n\n2. B").
+  function list(base) {
+    const first = lines[i].match(ITEM);
+    const ordered = /\d/.test(first[2]);
+    const start = ordered ? parseInt(first[2], 10) : 1;
+    const items = [];
+    while (i < lines.length) {
+      let m = lines[i].match(ITEM);
+      if (!m) {
+        // Skip blank lines only if the list continues after them.
+        let j = i;
+        while (j < lines.length && !lines[j].trim()) j++;
+        const next = j < lines.length ? lines[j].match(ITEM) : null;
+        if (j > i && next && next[1].length >= base) { i = j; continue; }
+        break;
+      }
+      const indent = m[1].length;
+      if (indent < base) break;
+      if (indent > base && items.length) { items[items.length - 1].children += list(indent); continue; }
+      if (/\d/.test(m[2]) !== ordered) break;
+      i++;
+      let text = m[3];
+      while (i < lines.length && lines[i].trim() && !ITEM.test(lines[i]) && /^\s+\S/.test(lines[i])) text += " " + lines[i++].trim();
+      items.push({ text, children: "" });
+    }
+    const body = items.map((it) => `<li>${inline(it.text)}${it.children}</li>`).join("");
+    return ordered ? `<ol${start !== 1 ? ` start="${start}"` : ""}>${body}</ol>` : `<ul>${body}</ul>`;
+  }
   while (i < lines.length) {
     const l = lines[i];
     if (!l.trim()) { i++; continue; }
@@ -459,19 +512,9 @@ function markdown(src) {
       out.push(`<div class="table-wrap"><table>${body.map((r, k) => `<tr>${cells(r).map((c) => (k === 0 ? `<th>${inline(c)}</th>` : `<td>${inline(c)}</td>`)).join("")}</tr>`).join("")}</table></div>`);
       continue;
     }
-    if (/^\s*([-*]|\d+\.)\s+/.test(l)) {
-      const ordered = /^\s*\d+\./.test(l);
-      const items = [];
-      while (i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i])) {
-        let item = lines[i++].replace(/^\s*([-*]|\d+\.)\s+/, "");
-        while (i < lines.length && lines[i].trim() && /^\s{2,}\S/.test(lines[i]) && !/^\s*([-*]|\d+\.)\s+/.test(lines[i])) item += " " + lines[i++].trim();
-        items.push(`<li>${inline(item)}</li>`);
-      }
-      out.push(ordered ? `<ol>${items.join("")}</ol>` : `<ul>${items.join("")}</ul>`);
-      continue;
-    }
+    if ((m = l.match(ITEM))) { out.push(list(m[1].length)); continue; }
     const para = [];
-    while (i < lines.length && lines[i].trim() && !/^(#{1,6}\s|\s*\||\s*([-*]|\d+\.)\s+)/.test(lines[i])) para.push(lines[i++].trim());
+    while (i < lines.length && lines[i].trim() && !/^(#{1,6}\s|\s*\|)/.test(lines[i]) && !ITEM.test(lines[i])) para.push(lines[i++].trim());
     out.push(`<p>${inline(para.join(" "))}</p>`);
   }
   return out.join("\n");
@@ -488,7 +531,12 @@ async function loadAccounts() {
   renderAccounts(r.accounts);
 }
 async function loadMatches(btn) {
-  if (!S.accounts.length) { $("matchesTable").innerHTML = `<div class="empty">Add an account to see matches.</div>`; return; }
+  if (!S.accounts.length) {
+    lastMatches = null;
+    matchesKey = "";
+    $("matchesTable").innerHTML = `<div class="empty">Add an account to see matches.</div>`;
+    return;
+  }
   $("matchesTable").innerHTML = `<div class="empty">Loading…</div>`;
   await busy(btn, async () => renderMatches(await api("/api/matches?count=10")));
 }
@@ -504,6 +552,7 @@ $("addForm").onsubmit = (e) => {
     const r = await api("/api/accounts", { action: $("accRole").value, account: $("accInput").value.trim(), label: $("accLabel").value.trim() });
     toast(r.message);
     $("accInput").value = ""; $("accLabel").value = "";
+    delete $("accRole").dataset.touched;
     renderAccounts(r.accounts);
     await loadState();
     loadMatches();
@@ -522,6 +571,7 @@ $("accountsTable").onclick = (e) => {
   });
 };
 $("saveNotes").onclick = (e) => busy(e.currentTarget, async () => toast((await api("/api/notes", { notes: $("notes").value })).message));
+$("accRole").onchange = () => ($("accRole").dataset.touched = "1");
 $("dotaDir").oninput = () => ($("dotaDir").dataset.touched = "1");
 $("installGsi").onclick = (e) =>
   busy(e.currentTarget, async () => {
@@ -556,7 +606,7 @@ $("matchesTable").onclick = (e) => {
   if (v) return showReview(v.dataset.view, v);
   const r = e.target.closest("button[data-review]");
   if (r) busy(r, async () => {
-    toast((await api("/api/review", { matchId: Number(r.dataset.review), accountId: Number(r.dataset.acc) })).message);
+    toast((await api("/api/review", { matchId: Number(r.dataset.review), accountId: Number(r.dataset.acc), hero: r.dataset.hero })).message);
     await loadState();
   });
 };
@@ -565,9 +615,13 @@ async function showReview(id, btn) {
     const r = await api(`/api/reviews/${encodeURIComponent(id)}`);
     $("reviewTitle").textContent = `Match ${r.matchId}`;
     $("reviewBody").innerHTML = markdown(r.markdown.replace(/^# Match \d+\s*/, ""));
+    $("reviewDlg").dataset.opener = id;
     $("reviewDlg").showModal();
   });
 }
+$("reviewDlg").addEventListener("close", () => {
+  $("matchesTable").querySelector(`[data-view="${$("reviewDlg").dataset.opener}"]`)?.focus();
+});
 $("closeDlg").onclick = () => $("reviewDlg").close();
 $("reviewDlg").addEventListener("click", (e) => { if (e.target === $("reviewDlg")) $("reviewDlg").close(); });
 $("stratzForm").onsubmit = (e) => {
@@ -615,7 +669,7 @@ let prevReviews = 0;
         loadMatches();
       }
     } catch (e) {
-      $("chips").innerHTML = chip("bad", "Dashboard server stopped");
+      $("chips").innerHTML = chip("bad", e instanceof TypeError ? "Dashboard server stopped" : e.message);
     }
   }, 3000);
 })();

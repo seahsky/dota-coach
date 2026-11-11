@@ -33,6 +33,8 @@ export interface Profile {
     review?: boolean;
     waitMin?: number;
     autostart?: boolean;
+    /** Command run after a match instead of claude -p. Kept here, not in .env, because Bun's .env loader rewrites $VARS. */
+    onMatch?: string;
   };
 }
 
@@ -63,6 +65,8 @@ export function profileAccounts(p: Profile): (Account & { role: "main" | "alt" }
 
 /** Make `acc` the main account. A previous main is kept as an alt. Returns a message. */
 export function setMain(p: Profile, acc: Account): string {
+  // The label setMain gives a demoted main should not stick when it is promoted again.
+  if (acc.label === "old main") acc = { ...acc, label: "main" };
   p.alts = p.alts.filter((a) => a.account_id !== acc.account_id);
   let msg = `Main set to ${acc.persona ?? acc.account_id}.`;
   if (p.main && p.main.account_id !== acc.account_id) {
@@ -85,6 +89,11 @@ export function removeAccount(p: Profile, id: number): string {
   p.alts = p.alts.filter((a) => a.account_id !== id);
   if (profileAccounts(p).length === before) throw new DotaError(`${id} is not in the profile.`);
   return `Removed ${id}.`;
+}
+
+/** The after-match command: the dashboard's setting, else DOTACOACH_ON_MATCH from the environment or .env. */
+export function onMatchCommand(p: Profile = loadProfile()): string {
+  return p.watch?.onMatch?.trim() || process.env.DOTACOACH_ON_MATCH?.trim() || "";
 }
 
 /** Display name for an account: label, then persona, then id. */

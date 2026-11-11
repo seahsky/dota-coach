@@ -7,7 +7,7 @@ import { CACHE_DIR } from "./cache.ts";
 import { DotaError } from "./errors.ts";
 import { heroName } from "./heroes.ts";
 import { getPlayerMatches, parseAndWait } from "./players.ts";
-import { type Profile, accountName, loadProfile, profileAccounts, saveProfile, steam64ToAccountId } from "./profile.ts";
+import { type Profile, accountName, loadProfile, onMatchCommand, profileAccounts, saveProfile, steam64ToAccountId } from "./profile.ts";
 
 export const SKILL_DIR = join(import.meta.dir, "..");
 export const REVIEWS_DIR = join(SKILL_DIR, "reviews");
@@ -182,8 +182,11 @@ export class Watcher {
     return this.startedAt !== null;
   }
 
+  private generation = 0;
+
   async start(): Promise<void> {
     if (this.running) return;
+    const gen = ++this.generation;
     const accounts = this.myAccounts();
     if (!accounts.size) {
       if (!this.opts.gsi) throw new DotaError("Polling needs saved accounts. Add your account first.");
@@ -207,18 +210,41 @@ export class Watcher {
     if (this.opts.pollMin > 0 || !this.opts.gsi) {
       const every = this.opts.pollMin || 5;
       await this.pollOnce(true);
+      // stop() or reconfigure() ran during the first poll: do not start an interval nobody can clear.
+      if (gen !== this.generation || !this.running) return;
       this.pollTimer = setInterval(() => void this.pollOnce(false), every * 60_000);
       this.log(`Polling OpenDota every ${every} min for ${accounts.size} account(s).`);
     }
   }
 
   stop(): void {
+    this.generation++;
     this.server?.stop(true);
     this.server = null;
     if (this.pollTimer) clearInterval(this.pollTimer);
     this.pollTimer = null;
     if (this.running) this.log("Watcher stopped.");
     this.startedAt = null;
+  }
+
+  /**
+   * Change options without dropping the queue or a review in progress. If the
+   * watcher was running and does not start with the new options, the old
+   * options are restored and restarted, and the error is rethrown.
+   */
+  async reconfigure(next: WatchOptions): Promise<void> {
+    const prev = this.opts;
+    const wasRunning = this.running;
+    if (wasRunning) this.stop();
+    this.opts = next;
+    if (!wasRunning) return;
+    try {
+      await this.start();
+    } catch (err) {
+      this.opts = prev;
+      await this.start().catch((e) => this.log(`Could not restart with the previous settings: ${e instanceof Error ? e.message : String(e)}`));
+      throw err;
+    }
   }
 
   status() {
@@ -335,7 +361,7 @@ export class Watcher {
 
     mkdirSync(REVIEWS_DIR, { recursive: true });
     const file = join(REVIEWS_DIR, `${f.matchId}.md`);
-    const custom = process.env.DOTACOACH_ON_MATCH?.trim();
+    const custom = onMatchCommand(profile);
     const env = {
       ...process.env,
       DOTACOACH_MATCH_ID: String(f.matchId),
@@ -345,12 +371,14 @@ export class Watcher {
     };
 
     if (custom) {
-      this.log(`Running DOTACOACH_ON_MATCH for ${f.matchId}`);
-      const shell = platform() === "win32" ? ["cmd", "/c", custom] : ["sh", "-c", custom];
-      const p = Bun.spawn(shell, { cwd: SKILL_DIR, env, stdout: "pipe", stderr: "pipe" });
+      this.log(`Running the after-match command for ${f.matchId}`);
+      // cmd.exe does not understand the \" escaping that normal argv quoting uses, so hand it the line verbatim.
+      const win = platform() === "win32";
+      const shell = win ? ["cmd", "/d", "/s", "/c", `"${custom}"`] : ["sh", "-c", custom];
+      const p = Bun.spawn(shell, { cwd: SKILL_DIR, env, stdout: "pipe", stderr: "pipe", windowsVerbatimArguments: win });
       const [out, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
       for (const l of `${out}${err}`.trim().split("\n").filter(Boolean).slice(-20)) this.log(`  ${l}`);
-      this.log(`DOTACOACH_ON_MATCH exited ${code}`);
+      this.log(`After-match command exited ${code}`);
       return;
     }
 
