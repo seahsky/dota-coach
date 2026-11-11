@@ -24,6 +24,8 @@ export interface Profile {
   gsi_token?: string;
   /** Dota install folder chosen in the dashboard. */
   dota_dir?: string;
+  /** Update the skill (git fast-forward) when the dashboard starts. Default on. */
+  update?: { auto?: boolean };
   /** Watcher settings saved from the dashboard. */
   watch?: {
     port?: number;

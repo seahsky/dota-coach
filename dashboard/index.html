@@ -135,6 +135,11 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 .md h1, .md h2, .md h3 { font-size: 16px; margin: 16px 0 6px; text-transform: none; letter-spacing: 0; color: var(--text); }
 .md ul, .md ol { padding-left: 22px; }
 .md li { margin: 4px 0; }
+.banner {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--warn-bg); color: var(--text); border-radius: 12px; padding: 12px 16px; margin: -8px 0 16px;
+}
+.banner ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
 .theme-toggle { font-size: 13px; padding: 4px 10px; }
 @media (max-width: 560px) {
   section.card { padding: 16px; }
@@ -151,6 +156,10 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   </header>
   <p class="sub">Tell the coach who you are, connect your game, and get a review after every match.</p>
   <div class="chips" id="chips" aria-live="polite"></div>
+  <div class="banner" id="updateBanner" hidden>
+    <div><strong id="updateTitle">Update available</strong><ul id="updateList"></ul></div>
+    <button class="primary" type="button" id="applyUpdate">Update now</button>
+  </div>
 
   <!-- 1. Accounts -->
   <section class="card" id="accounts">
@@ -245,6 +254,13 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
     <p class="hint" id="onMatchEnv" hidden></p>
     <div class="row"><div class="grow"><label for="onMatch">Command</label><input type="text" id="onMatch" placeholder="(empty: claude -p review)"></div><div class="fixed"><button type="button" id="saveOnMatch">Save</button></div></div>
     <p class="hint" id="paths"></p>
+  </section>
+  <!-- 6. Updates -->
+  <section class="card" id="updates">
+    <div class="card-head"><h2><span class="step">6</span>Updates</h2><button type="button" id="checkUpdate">Check now</button></div>
+    <p class="hint" id="updateStatus">Not checked yet.</p>
+    <label class="check"><input type="checkbox" id="autoUpdate"> Update automatically when the dashboard starts</label>
+    <p class="hint">Updates only add the newest skill files from GitHub. Your accounts, notes, settings, STRATZ key and reviews are never changed.</p>
   </section>
 </main>
 
@@ -449,11 +465,29 @@ function renderMatches(data, force = true) {
   if (focusId) $("matchesTable").querySelector(`[data-view="${focusId}"], [data-review="${focusId}"]`)?.focus();
 }
 
+function renderUpdate() {
+  const u = S.update, st = u.status;
+  $("autoUpdate").checked = u.auto;
+  $("updateStatus").textContent = u.checking
+    ? "Checking…"
+    : st
+      ? `${st.message}${st.branch ? ` (branch ${st.branch})` : ""} Checked ${ago(st.checkedAt)}.`
+      : "Not checked yet.";
+  const show = st && (st.state === "available" || (st.state === "blocked" && st.behind > 0));
+  $("updateBanner").hidden = !show;
+  if (show) {
+    $("updateTitle").textContent = st.state === "available" ? `Update available: ${st.behind} change${st.behind > 1 ? "s" : ""}` : st.message;
+    $("updateList").innerHTML = st.incoming.slice(0, 5).map((x) => `<li>${esc(x)}</li>`).join("");
+    $("applyUpdate").hidden = st.state !== "available";
+  }
+}
+
 function render() {
   renderChips();
   renderGsi();
   renderWatcher();
   renderData();
+  renderUpdate();
   if (lastMatches && S.accounts.length) renderMatches(lastMatches, false);
 }
 
@@ -650,6 +684,24 @@ $("clearStratz").onclick = (e) => {
   busy(e.currentTarget, async () => { toast((await api("/api/stratz", { key: null })).message); await loadState(); });
 };
 $("onMatch").oninput = () => ($("onMatch").dataset.touched = "1");
+$("checkUpdate").onclick = (e) => busy(e.currentTarget, async () => { toast((await api("/api/update/check", {})).message); await loadState(); });
+$("autoUpdate").onchange = (e) => busy(null, async () => {
+  try { toast((await api("/api/update/auto", { auto: e.target.checked })).message); }
+  finally { await loadState(); }
+});
+$("applyUpdate").onclick = (e) =>
+  busy(e.currentTarget, async () => {
+    const r = await api("/api/update/apply", {});
+    toast(r.message);
+    // The server restarts with the same link; wait for it to come back, then reload onto the new page.
+    if (r.restarting) {
+      for (let i = 0; i < 60; i++) {
+        await new Promise((res) => setTimeout(res, 1000));
+        try { if ((await api("/api/state")).pid !== S.pid) { location.reload(); return; } } catch {}
+      }
+      toast("The dashboard did not come back. Check the terminal.", true);
+    }
+  });
 $("saveOnMatch").onclick = (e) =>
   busy(e.currentTarget, async () => {
     toast((await api("/api/settings", { onMatch: $("onMatch").value })).message);

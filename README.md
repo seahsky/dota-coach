@@ -54,6 +54,18 @@ A Claude Code skill that turns Claude into a Dota 2 coach. Claude pulls live dat
 
 Restart Claude Code so it picks up the skill. Ask a Dota question ("what changed in the latest patch?", "how do I counter Pudge?") and Claude loads the skill on its own.
 
+## Updating
+
+The dashboard updates the skill when it starts: it checks GitHub and installs a newer version before the page opens. While it runs it checks again every 6 hours and shows an **Update now** banner. Turn automatic updates off in the page's Updates section, or skip one run with `--no-update`.
+
+Without the dashboard:
+
+```bash
+bun run tools/Update.ts
+```
+
+Updates only fast-forward the skill's own files. Your `profile.json`, `.env` and `reviews/` are git-ignored and never touched. If you edited the skill's files yourself, or the branch you cloned was merged and deleted on GitHub, the update stops and tells you what to do instead. After an update, start a new Claude Code session so it reads the new instructions.
+
 ## Automatic review after each game
 
 OpenDota and STRATZ have no webhooks. The instant signal comes from Dota itself: Game State Integration posts game state to a local URL, including the match id when the game ends. `tools/WatchMatches.ts` listens for that, asks OpenDota to parse the replay, then runs `claude -p` to review the match and saves the result to `reviews/<match_id>.md`. Expect the review a few minutes after the game: the trigger is instant, the OpenDota parse takes 2-10 minutes, the review about a minute.

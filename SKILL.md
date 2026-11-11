@@ -35,6 +35,7 @@ The user's accounts are saved in `profile.json` next to this file: one main acco
 | `Profile.ts [show\|set-main\|add-alt\|remove\|note] [--label=X]` | The user's main and alt accounts, current rank, saved notes. | profile.json + OpenDota /players |
 | `LastMatch.ts [--account=X] [--count=N] [--parse] [--wait=MIN]` | Newest matches across main and alts; `--parse` asks OpenDota to parse the newest one. | OpenDota /players/{id}/matches |
 | `Dashboard.ts` | Local setup page for the user: accounts, notes, STRATZ key, Dota GSI, watcher, reviews. Suggest it for setup; the user runs it. | local |
+| `Update.ts [--check]` | Update the skill from GitHub (fast-forward only; never touches profile.json, .env, reviews/). Run it when the user asks to update the coach. | git |
 | `WatchMatches.ts` | Background watcher the user runs while playing: reviews each game automatically when it ends. Setup only; you never run it yourself in a conversation. | Dota 2 Game State Integration, OpenDota |
 
 Every tool accepts `--json` for structured output and `--help` for all flags. Hero arguments accept names, ids and nicknames (`am`, `wr`, `es`, `qop`, `sf`, `np`, `kotl`...). If a tool says a name is ambiguous or unknown, show the candidates and ask the user.
