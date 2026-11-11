@@ -17,7 +17,7 @@ cd ~/.claude/skills/DotaCoach && bun run tools/<Name>.ts ...
 
 The user's accounts are saved in `profile.json` next to this file: one main account, any number of alts, and their coaching notes. At the start of any request about **their own** games ("my last game", "how am I doing on Slark", "what should I work on"), run `bun run tools/Profile.ts` once.
 
-- No accounts saved: ask for their Dota Friend ID (Dota client: Profile, top left) or an opendota/dotabuff/stratz profile link, then save it with `Profile.ts set-main <account>`. Do this once; never ask again when a profile exists.
+- No accounts saved: suggest the setup page (`bun run tools/Dashboard.ts`, opens in the browser) or ask for their Dota Friend ID (Dota client: Profile, top left) or an opendota/dotabuff/stratz profile link, then save it with `Profile.ts set-main <account>`. Do this once; never ask again when a profile exists.
 - They mention another account ("my smurf", "my brother's account I play on"): offer to save it with `Profile.ts add-alt <account> --label=<name>`.
 - They state a lasting preference (main role, hero pool, goal like "climb out of Archon"): save it with `Profile.ts note "<text>"` (replaces the old note, so include what is still true).
 - Use the main account's rank as their bracket for GetHeroStats and as the comparison point in reviews, unless the game being discussed was on an alt.
@@ -34,6 +34,7 @@ The user's accounts are saved in `profile.json` next to this file: one main acco
 | `GetMatch.ts <match_id> [--draft]` | Match summary, players, items, gold/XP swings; draft order with `--draft`. | OpenDota /matches |
 | `Profile.ts [show\|set-main\|add-alt\|remove\|note] [--label=X]` | The user's main and alt accounts, current rank, saved notes. | profile.json + OpenDota /players |
 | `LastMatch.ts [--account=X] [--count=N] [--parse] [--wait=MIN]` | Newest matches across main and alts; `--parse` asks OpenDota to parse the newest one. | OpenDota /players/{id}/matches |
+| `Dashboard.ts` | Local setup page for the user: accounts, notes, STRATZ key, Dota GSI, watcher, reviews. Suggest it for setup; the user runs it. | local |
 | `WatchMatches.ts` | Background watcher the user runs while playing: reviews each game automatically when it ends. Setup only; you never run it yourself in a conversation. | Dota 2 Game State Integration, OpenDota |
 
 Every tool accepts `--json` for structured output and `--help` for all flags. Hero arguments accept names, ids and nicknames (`am`, `wr`, `es`, `qop`, `sf`, `np`, `kotl`...). If a tool says a name is ambiguous or unknown, show the candidates and ask the user.

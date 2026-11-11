@@ -38,14 +38,18 @@ A Claude Code skill that turns Claude into a Dota 2 coach. Claude pulls live dat
 
    Without it, every tool still works on OpenDota and says so in its source line. With it, `GetHeroStats --role` uses STRATZ ranked per-position data and `GetMatchups` uses STRATZ matchups, with `--bracket` support. If a STRATZ call fails, the tool falls back to OpenDota and prints the reason.
 
-4. Tell it who you are. In Claude Code, say "my Dota account is <Friend ID>" (or paste your OpenDota/Dotabuff/STRATZ profile link) and mention any alts. Claude saves them to `profile.json` in the skill folder (git-ignored) with `tools/Profile.ts`, and uses them for "review my last game" and your bracket. You can also run it directly:
+4. Set up your accounts and the post-game watcher in the dashboard:
+
+   ```bash
+   bun run ~/.claude/skills/DotaCoach/tools/Dashboard.ts
+   ```
+
+   It opens `http://127.0.0.1:3743/` in your browser. There you add your main account and alts (Friend ID or a profile link), write coaching notes, connect Dota 2, start the watcher, paste a STRATZ token, and read saved reviews. Everything is stored in the skill folder: accounts and notes in `profile.json`, keys in `.env`; git ignores both. The page only listens on your computer.
+
+   You can skip the dashboard: tell Claude "my Dota account is <Friend ID>" and it saves it with `tools/Profile.ts`, or run that yourself:
 
    ```bash
    bun run tools/Profile.ts set-main <friend-id>
-   ```
-
-   ```bash
-   bun run tools/Profile.ts add-alt <friend-id> --label=smurf
    ```
 
 Restart Claude Code so it picks up the skill. Ask a Dota question ("what changed in the latest patch?", "how do I counter Pudge?") and Claude loads the skill on its own.
@@ -54,7 +58,9 @@ Restart Claude Code so it picks up the skill. Ask a Dota question ("what changed
 
 OpenDota and STRATZ have no webhooks. The instant signal comes from Dota itself: Game State Integration posts game state to a local URL, including the match id when the game ends. `tools/WatchMatches.ts` listens for that, asks OpenDota to parse the replay, then runs `claude -p` to review the match and saves the result to `reviews/<match_id>.md`. Expect the review a few minutes after the game: the trigger is instant, the OpenDota parse takes 2-10 minutes, the review about a minute.
 
-On the PC that runs Dota:
+The dashboard (`tools/Dashboard.ts`) walks through this: it installs the config into your Dota folder, runs the watcher, shows when Dota last checked in, and lists your recent matches with their reviews. Keep it open while you play.
+
+Without the dashboard, on the PC that runs Dota:
 
 ```bash
 bun run tools/WatchMatches.ts --install-gsi
@@ -109,7 +115,8 @@ bun run typecheck
 
 ```
 SKILL.md      entry point Claude reads: when to use the skill, which tool and workflow
-tools/        one CLI per data need (bun run tools/<Name>.ts)
+tools/        one CLI per data need (bun run tools/<Name>.ts), plus Dashboard and WatchMatches
+dashboard/    the setup page served by tools/Dashboard.ts
 workflows/    playbooks for each request type (patch, hero, meta, counter, draft, match, auto review)
 lib/          API client, file cache, hero-name resolver, item names, STRATZ client
 tests/        resolver tests and the live smoke test

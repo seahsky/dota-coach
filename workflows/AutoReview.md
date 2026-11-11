@@ -16,7 +16,14 @@ The slow part is OpenDota parsing the replay, not the trigger. GSI only reports 
 
 Fallback without GSI (Dota on a different machine than Claude Code, or the user does not want the launch option): `--poll=5` checks OpenDota every 5 minutes. A match appears on OpenDota a few minutes after it ends, so this adds about 5-10 minutes.
 
-## Steps
+## Easiest path: the dashboard
+Tell the user to run this on the PC they play on and follow the page top to bottom (accounts, Connect Dota 2, Post-game reviews):
+```
+bun run tools/Dashboard.ts
+```
+It installs the GSI config, shows a "Signal from Dota" light that turns green once Dota checks in, runs the watcher while the page's terminal stays open, and lists reviews. Use the CLI steps below only if they prefer the terminal or the dashboard cannot run.
+
+## CLI steps
 1. `bun run tools/Profile.ts`. If no main account is saved, get it first (SKILL.md "Who the user is"). Add any alts they play on: GSI ignores accounts that are not in the profile.
 2. Install the GSI config. This must run on the PC that runs Dota:
    ```
