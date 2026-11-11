@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="dotacoach-token" content="__SESSION_TOKEN__">
+<title>DotaCoach Setup</title>
+<style>
+:root {
+  --bg: #f6f5f2;
+  --surface: #ffffff;
+  --surface-2: #f0eeea;
+  --border: #e0ddd6;
+  --text: #1d1c1a;
+  --muted: #6b675f;
+  --accent: #b5361f;
+  --accent-text: #ffffff;
+  --ok: #2e7d4f;
+  --ok-bg: #e5f3ea;
+  --warn: #9a6200;
+  --warn-bg: #fbf0d9;
+  --bad: #b3261e;
+  --bad-bg: #fbe4e2;
+  --focus: #2f6fd6;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141413;
+    --surface: #1d1d1b;
+    --surface-2: #262624;
+    --border: #353531;
+    --text: #ecebe7;
+    --muted: #a19d94;
+    --accent: #e0644b;
+    --accent-text: #160b08;
+    --ok: #7ccc9a;
+    --ok-bg: #1d3326;
+    --warn: #e7b65c;
+    --warn-bg: #3a2e16;
+    --bad: #f08c84;
+    --bad-bg: #3d1f1d;
+    --focus: #7aa7ff;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141413; --surface: #1d1d1b; --surface-2: #262624; --border: #353531; --text: #ecebe7; --muted: #a19d94;
+  --accent: #e0644b; --accent-text: #160b08; --ok: #7ccc9a; --ok-bg: #1d3326; --warn: #e7b65c; --warn-bg: #3a2e16;
+  --bad: #f08c84; --bad-bg: #3d1f1d; --focus: #7aa7ff; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+main { max-width: 900px; margin: 0 auto; padding: 24px 16px 64px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+h2 { font-size: 17px; margin: 0; display: flex; align-items: center; gap: 10px; }
+h3 { font-size: 14px; margin: 18px 0 8px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+p { margin: 6px 0; }
+.sub { color: var(--muted); margin: 0 0 20px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 24px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+  font-size: 13px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); white-space: nowrap;
+}
+.chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: .9; }
+.chip.ok { color: var(--ok); background: var(--ok-bg); border-color: transparent; }
+.chip.warn { color: var(--warn); background: var(--warn-bg); border-color: transparent; }
+.chip.bad { color: var(--bad); background: var(--bad-bg); border-color: transparent; }
+section.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+.step { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--surface-2); font-size: 13px; color: var(--muted); flex: none; }
+.card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+.hint { color: var(--muted); font-size: 13px; }
+label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+input[type=text], input[type=password], input[type=number], textarea, select {
+  width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; min-width: 0;
+}
+textarea { min-height: 72px; resize: vertical; }
+input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible, a:focus-visible {
+  outline: 2px solid var(--focus); outline-offset: 2px;
+}
+button {
+  font: inherit; font-size: 14px; border-radius: 8px; padding: 8px 14px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text); white-space: nowrap;
+}
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+button.link { background: none; border: none; padding: 4px 6px; color: var(--accent); }
+button.danger { color: var(--bad); }
+button:disabled { opacity: .55; cursor: progress; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.row > .grow { flex: 1 1 220px; min-width: 0; }
+.row > .fixed { flex: 0 0 auto; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; margin: 0; }
+.check input { width: 16px; height: 16px; accent-color: var(--accent); }
+.table-wrap { overflow-x: auto; margin: 8px 0; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+th, td { padding: 8px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: none; }
+.tag { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+.tag.main { background: var(--accent); color: var(--accent-text); }
+.win { color: var(--ok); font-weight: 600; }
+.loss { color: var(--bad); font-weight: 600; }
+.empty { padding: 16px; text-align: center; color: var(--muted); background: var(--surface-2); border-radius: 8px; }
+code, pre { font-family: var(--mono); font-size: 13px; }
+code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+pre { background: var(--surface-2); padding: 12px; border-radius: 8px; overflow-x: auto; margin: 8px 0; }
+.log { max-height: 240px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+ol.checklist { padding-left: 20px; margin: 8px 0; }
+ol.checklist li { margin: 6px 0; }
+.status-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+details summary { cursor: pointer; color: var(--muted); font-size: 14px; margin-top: 8px; }
+#toast {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); max-width: calc(100% - 32px);
+  background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 14px;
+  opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 10;
+}
+#toast.show { opacity: 1; }
+#toast.error { background: var(--bad); color: #fff; }
+dialog {
+  width: min(760px, calc(100% - 32px)); max-height: calc(100% - 48px); border: 1px solid var(--border);
+  border-radius: 12px; background: var(--surface); color: var(--text); padding: 0;
+}
+dialog::backdrop { background: rgba(0,0,0,.45); }
+.dlg-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); }
+.md { padding: 4px 20px 20px; }
+.md h1, .md h2, .md h3 { font-size: 16px; margin: 16px 0 6px; text-transform: none; letter-spacing: 0; color: var(--text); }
+.md ul, .md ol { padding-left: 22px; }
+.md li { margin: 4px 0; }
+.banner {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--warn-bg); color: var(--text); border-radius: 12px; padding: 12px 16px; margin: -8px 0 16px;
+}
+.banner ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
+.theme-toggle { font-size: 13px; padding: 4px 10px; }
+@media (max-width: 560px) {
+  section.card { padding: 16px; }
+  .hide-sm { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>DotaCoach setup</h1>
+    <button class="theme-toggle" id="themeBtn" type="button" aria-label="Switch color theme">Theme: auto</button>
+  </header>
+  <p class="sub">Tell the coach who you are, connect your game, and get a review after every match.</p>
+  <div class="chips" id="chips" aria-live="polite"></div>
+  <div class="banner" id="updateBanner" hidden>
+    <div><strong id="updateTitle">Update available</strong><ul id="updateList"></ul></div>
+    <button class="primary" type="button" id="applyUpdate">Update now</button>
+  </div>
+
+  <!-- 1. Accounts -->
+  <section class="card" id="accounts">
+    <div class="card-head"><h2><span class="step">1</span>Your accounts</h2></div>
+    <p class="hint">Your Friend ID is on your Dota profile (top left). A Steam64 id or an OpenDota, Dotabuff, STRATZ or Steam <code>/profiles/</code> link also works.</p>
+    <div class="table-wrap" id="accountsTable"></div>
+    <form class="row" id="addForm" autocomplete="off">
+      <div class="grow">
+        <label for="accInput">Account</label>
+        <input type="text" id="accInput" placeholder="Friend ID or profile link" required>
+      </div>
+      <div class="fixed" style="flex-basis:140px">
+        <label for="accLabel">Label (optional)</label>
+        <input type="text" id="accLabel" placeholder="smurf" maxlength="40">
+      </div>
+      <div class="fixed" style="flex-basis:130px">
+        <label for="accRole">Save as</label>
+        <select id="accRole"><option value="set-main">Main</option><option value="add-alt">Alt</option></select>
+      </div>
+      <div class="fixed"><button class="primary" type="submit">Save</button></div>
+    </form>
+    <h3 id="notesHead">Coaching notes</h3>
+    <p class="hint" id="notesHint">Main role, hero pool, goals. The coach reads these before every answer and review.</p>
+    <textarea id="notes" aria-labelledby="notesHead" aria-describedby="notesHint" maxlength="2000" placeholder="e.g. Pos 1 player, Archon 3. Want better farming patterns and fewer lane deaths."></textarea>
+    <div class="row" style="margin-top:8px"><button type="button" id="saveNotes">Save notes</button></div>
+  </section>
+
+  <!-- 2. Game integration -->
+  <section class="card" id="gsi">
+    <div class="card-head"><h2><span class="step">2</span>Connect Dota 2</h2><span id="gsiChip"></span></div>
+    <p class="hint">Dota's Game State Integration tells the coach the moment a game ends. Do this on the PC you play on.</p>
+    <ol class="checklist">
+      <li>
+        <div class="row">
+          <div class="grow">
+            <label for="dotaDir">Dota 2 folder (<code>dota 2 beta</code>)</label>
+            <input type="text" id="dotaDir" placeholder="…/steamapps/common/dota 2 beta">
+          </div>
+          <div class="fixed"><button class="primary" type="button" id="installGsi">Install config</button></div>
+        </div>
+        <p class="hint" id="dotaDirHint"></p>
+      </li>
+      <li>In Steam: right-click Dota 2 &gt; Properties &gt; General &gt; Launch Options, add
+        <code>-gamestateintegration</code> <button class="link" type="button" data-copy="-gamestateintegration">Copy</button></li>
+      <li>Restart Dota, start the watcher below, and open any game (a bot match works). The light turns green when Dota checks in.</li>
+    </ol>
+    <div class="status-line"><span>Signal from Dota:</span> <span id="gsiSignal" class="chip">never</span></div>
+    <p class="hint">Valve has said GSI can cost some frame rate. Remove the launch option to turn it off.</p>
+    <details><summary>Show the config file</summary><pre id="gsiConfig">…</pre></details>
+  </section>
+
+  <!-- 3. Watcher -->
+  <section class="card" id="watch">
+    <div class="card-head">
+      <h2><span class="step">3</span>Post-game reviews</h2>
+      <div class="row"><button class="primary" type="button" id="startBtn">Start watcher</button><button type="button" id="stopBtn">Stop</button></div>
+    </div>
+    <p class="hint" id="watchSummary"></p>
+    <div class="grid2" style="margin-top:12px">
+      <label class="check"><input type="checkbox" id="optGsi"> Listen for Dota (instant)</label>
+      <label class="check"><input type="checkbox" id="optParse"> Request OpenDota replay parse</label>
+      <label class="check"><input type="checkbox" id="optReview"> Write a review with Claude</label>
+      <label class="check"><input type="checkbox" id="optAuto"> Start watcher when this page starts</label>
+    </div>
+    <div class="grid2" style="margin-top:12px">
+      <div><label for="optPoll">Also poll OpenDota every (min, 0 = off)</label><input type="number" id="optPoll" min="0" max="120"></div>
+      <div><label for="optWait">Wait for parse up to (min)</label><input type="number" id="optWait" min="1" max="60"></div>
+      <div><label for="optPort">GSI port</label><input type="number" id="optPort" min="1024" max="65535"></div>
+    </div>
+    <div class="row" style="margin-top:12px"><button type="button" id="saveOpts">Save settings</button></div>
+    <h3>Activity</h3>
+    <pre class="log" id="log" aria-live="polite">Nothing yet.</pre>
+  </section>
+
+  <!-- 4. Matches & reviews -->
+  <section class="card" id="matches">
+    <div class="card-head"><h2><span class="step">4</span>Recent matches</h2><button type="button" id="refreshMatches">Refresh</button></div>
+    <p class="hint">Across your main and alts. A game shows up here a few minutes after it ends.</p>
+    <div class="table-wrap" id="matchesTable"><div class="empty">Add an account to see matches.</div></div>
+  </section>
+
+  <!-- 5. Data -->
+  <section class="card" id="data">
+    <div class="card-head"><h2><span class="step">5</span>Optional: STRATZ and custom command</h2><span id="stratzChip"></span></div>
+    <p class="hint">A STRATZ token adds ranked per-position stats and bracket matchups. Get one at stratz.com/api. It is saved to the skill's <code>.env</code>.</p>
+    <form class="row" id="stratzForm" autocomplete="off">
+      <div class="grow"><label for="stratzKey">STRATZ token</label><input type="password" id="stratzKey" placeholder="paste token"></div>
+      <div class="fixed row"><button class="primary" type="submit">Save</button><button type="button" id="testStratz">Test</button><button type="button" class="danger" id="clearStratz">Remove</button></div>
+    </form>
+    <h3>After-match command</h3>
+    <p class="hint">Runs instead of the Claude review, e.g. to post to Discord. It gets <code>DOTACOACH_MATCH_ID</code>, <code>DOTACOACH_ACCOUNT_ID</code>, <code>DOTACOACH_HERO</code> and <code>DOTACOACH_REVIEW_FILE</code> as environment variables. Leave empty to use Claude.</p>
+    <p class="hint" id="onMatchEnv" hidden></p>
+    <div class="row"><div class="grow"><label for="onMatch">Command</label><input type="text" id="onMatch" placeholder="(empty: claude -p review)"></div><div class="fixed"><button type="button" id="saveOnMatch">Save</button></div></div>
+    <p class="hint" id="paths"></p>
+  </section>
+  <!-- 6. Updates -->
+  <section class="card" id="updates">
+    <div class="card-head"><h2><span class="step">6</span>Updates</h2><button type="button" id="checkUpdate">Check now</button></div>
+    <p class="hint" id="updateStatus">Not checked yet.</p>
+    <label class="check"><input type="checkbox" id="autoUpdate"> Update automatically when the dashboard starts</label>
+    <p class="hint">Updates only add the newest skill files from GitHub. Your accounts, notes, settings, STRATZ key and reviews are never changed.</p>
+  </section>
+</main>
+
+<dialog id="reviewDlg" aria-labelledby="reviewTitle">
+  <div class="dlg-head"><strong id="reviewTitle">Review</strong><button type="button" id="closeDlg">Close</button></div>
+  <div class="md" id="reviewBody"></div>
+</dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+const TOKEN = document.querySelector('meta[name="dotacoach-token"]').content;
+const $ = (id) => document.getElementById(id);
+let S = null; // last /api/state
+let optsDirty = false;
+
+// ---------- helpers ----------
+async function api(path, body) {
+  const init = { headers: { "X-DotaCoach-Token": TOKEN } };
+  if (body !== undefined) {
+    init.method = "POST";
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+  const res = await fetch(path, init);
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 403) throw new Error("This page is from an earlier run of the dashboard. Open the new link printed in the terminal.");
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+let toastTimer;
+function toast(msg, isError = false) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.className = "show" + (isError ? " error" : "");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (t.className = ""), isError ? 6000 : 3000);
+}
+async function busy(btn, fn) {
+  if (btn) btn.disabled = true;
+  try { return await fn(); }
+  catch (e) { toast(e.message, true); }
+  finally {
+    if (btn) btn.disabled = false;
+    // Buttons whose state depends on the server (Start/Stop) are set by render; redo it after re-enabling.
+    if (S) renderWatcher();
+  }
+}
+function ago(ms) {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} d ago`;
+}
+const chip = (cls, text) => `<span class="chip ${cls}">${esc(text)}</span>`;
+const mmss = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+
+// ---------- theme ----------
+const THEMES = ["auto", "light", "dark"];
+function applyTheme(t) {
+  if (t === "auto") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", t);
+  $("themeBtn").textContent = `Theme: ${t}`;
+}
+let theme = "auto";
+try { theme = localStorage.getItem("dotacoach-theme") || "auto"; } catch {}
+applyTheme(theme);
+$("themeBtn").onclick = () => {
+  theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+  applyTheme(theme);
+  try { localStorage.setItem("dotacoach-theme", theme); } catch {}
+};
+
+// ---------- render ----------
+function renderChips() {
+  const s = S;
+  const hasMain = s.accounts.some((a) => a.role === "main");
+  const lastGsi = s.watcher.lastGsi;
+  const gsiFresh = s.watcher.running && s.watchOptions.gsi && lastGsi && Date.now() - lastGsi.at < 120000;
+  $("chips").innerHTML = [
+    hasMain ? chip("ok", `${s.accounts.length} account${s.accounts.length > 1 ? "s" : ""}`) : chip("bad", "No main account"),
+    s.gsi.upToDate ? chip("ok", "GSI config installed") : s.gsi.installed ? chip("warn", "GSI config outdated") : chip("warn", "GSI not installed"),
+    s.watcher.running ? chip("ok", "Watcher running") : chip("", "Watcher stopped"),
+    gsiFresh ? chip("ok", "Dota connected") : "",
+    s.claudeOnPath || s.onMatchEffective ? "" : chip("bad", "claude not on PATH"),
+    s.stratz.set ? chip("ok", "STRATZ key set") : chip("", "No STRATZ key"),
+  ].join("");
+}
+
+function renderAccounts(list) {
+  if (!list.length) {
+    $("accountsTable").innerHTML = `<div class="empty">No accounts yet. Add your main account below.</div>`;
+    if (!$("accRole").dataset.touched) $("accRole").value = "set-main";
+    return;
+  }
+  if (!$("accRole").dataset.touched) $("accRole").value = list.some((a) => a.role === "main") ? "add-alt" : "set-main";
+  $("accountsTable").innerHTML = `<table><thead><tr><th>Role</th><th>Name</th><th>Rank</th><th class="hide-sm">Account</th><th></th></tr></thead><tbody>${list
+    .map(
+      (a) => `<tr>
+        <td><span class="tag ${a.role === "main" ? "main" : ""}">${a.role}</span></td>
+        <td>${esc(a.persona || "")}${a.label && a.label !== "main" ? ` <span class="hint">(${esc(a.label)})</span>` : ""}${a.error ? `<div class="hint">${esc(a.error)}</div>` : ""}</td>
+        <td>${a.rank === undefined ? "…" : esc(a.rank || "unranked")}</td>
+        <td class="hide-sm"><code>${a.account_id}</code></td>
+        <td style="text-align:right">${a.role === "alt" ? `<button class="link" data-act="set-main" data-id="${a.account_id}" data-label="${esc(a.label || "")}">Make main</button>` : ""}<button class="link danger" data-act="remove" data-id="${a.account_id}">Remove</button></td>
+      </tr>`,
+    )
+    .join("")}</tbody></table>`;
+}
+
+function renderGsi() {
+  const g = S.gsi;
+  const dir = $("dotaDir");
+  if (document.activeElement !== dir && !dir.dataset.touched) dir.value = g.dotaDir || "";
+  $("dotaDirHint").textContent = g.installed
+    ? `Config at ${g.installed.path}` + (g.upToDate ? "" : ` (outdated: ${!g.installed.tokenMatches ? "token changed" : `port ${g.installed.port}, watcher uses ${S.watchOptions.port}`}; install again)`)
+    : g.detected ? `Found Dota at ${g.detected}.` : "Could not find Dota automatically. In Steam: Dota 2 > Manage > Browse local files, then paste that folder.";
+  $("gsiChip").innerHTML = g.upToDate ? chip("ok", "Installed") : g.installed ? chip("warn", "Outdated") : chip("warn", "Not installed");
+  const last = S.watcher.lastGsi;
+  const el = $("gsiSignal");
+  if (!S.watcher.running || !S.watchOptions.gsi) { el.className = "chip"; el.textContent = S.watcher.running ? "GSI listening is off" : "watcher stopped"; }
+  else if (!last) { el.className = "chip warn"; el.textContent = "waiting for Dota"; }
+  else {
+    const fresh = Date.now() - last.at < 120000;
+    el.className = "chip " + (fresh ? "ok" : "warn");
+    const st = (last.gameState || "menu").replace("DOTA_GAMERULES_STATE_", "").replace(/_/g, " ").toLowerCase();
+    el.textContent = `${ago(last.at)} · ${st}`;
+  }
+}
+
+function renderWatcher() {
+  const w = S.watcher, o = S.watchOptions;
+  $("startBtn").disabled = w.running;
+  $("stopBtn").disabled = !w.running;
+  if (!optsDirty) {
+    $("optGsi").checked = o.gsi; $("optParse").checked = o.parse; $("optReview").checked = o.review;
+    $("optAuto").checked = o.autostart; $("optPoll").value = o.pollMin; $("optWait").value = o.waitMin; $("optPort").value = o.port;
+  }
+  const how = [o.gsi ? "listens for Dota" : null, o.pollMin ? `polls OpenDota every ${o.pollMin} min` : null].filter(Boolean).join(" and ");
+  const reviewer = S.onMatchEffective ? "runs your after-match command" : S.claudeOnPath ? "writes a review with Claude Code (uses your Claude usage)" : "cannot review: claude is not on PATH";
+  $("watchSummary").textContent =
+    `${w.running ? `Running since ${new Date(w.startedAt).toLocaleTimeString()}. ` : "Stopped. "}When a game ends it ${how || "does nothing (enable a trigger)"}, ` +
+    `${o.parse ? "requests an OpenDota parse, " : ""}then ${o.review ? reviewer : "stops (reviews off)"}. Keep this terminal open while you play.`;
+  const lines = w.log.map((l) => `[${new Date(l.at).toLocaleTimeString()}] ${l.text}`);
+  if (w.current) lines.push(`… working on match ${w.current.matchId}${w.queue.length ? `, ${w.queue.length} queued` : ""}`);
+  const log = $("log");
+  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
+  const text = lines.join("\n") || "Nothing yet.";
+  if (log.textContent !== text) { log.textContent = text; if (atBottom) log.scrollTop = log.scrollHeight; }
+}
+
+function renderData() {
+  $("stratzChip").innerHTML = S.stratz.set
+    ? chip(S.stratz.fromEnvironment ? "warn" : "ok", S.stratz.fromEnvironment ? `Key ${S.stratz.masked} from your environment` : `Key ${S.stratz.masked}`)
+    : "";
+  const envHint = $("onMatchEnv");
+  envHint.hidden = !S.onMatchFromEnv;
+  envHint.textContent = S.onMatchFromEnv ? `DOTACOACH_ON_MATCH is set in your environment or .env, so this command runs: ${S.onMatchEffective}` : "";
+  if (document.activeElement !== $("onMatch") && !$("onMatch").dataset.touched) $("onMatch").value = S.onMatch;
+  $("paths").innerHTML = `Profile: <code>${esc(S.profileFile)}</code> · Settings: <code>${esc(S.envFile)}</code>`;
+}
+
+let lastMatches = null;
+let matchesKey = "";
+let pendingFocus = null;
+function renderMatches(data, force = true) {
+  lastMatches = data;
+  const reviewed = new Set(S ? S.reviews.map((r) => r.matchId) : []);
+  const busyIds = new Set(S ? [S.watcher.current, ...S.watcher.queue].filter(Boolean).map((f) => f.matchId) : []);
+  // Polling calls this every 3s; rebuilding the table would drop keyboard focus, so skip when nothing changed.
+  const key = JSON.stringify([data.matches.map((m) => m.matchId), [...reviewed], [...busyIds], data.errors]);
+  if (!force && key === matchesKey) return;
+  matchesKey = key;
+  const focused = document.activeElement?.closest?.("#matchesTable button");
+  const focusId = focused ? focused.dataset.view || focused.dataset.review : pendingFocus;
+  pendingFocus = null;
+  if (!data.matches.length) {
+    $("matchesTable").innerHTML = `<div class="empty">${data.errors.length ? esc(data.errors.join("; ")) : "No matches found. Is Expose Public Match Data on in Dota's settings?"}</div>`;
+    return;
+  }
+  $("matchesTable").innerHTML = `<table><thead><tr><th>Hero</th><th>Result</th><th class="num hide-sm">K/D/A</th><th class="num hide-sm">Length</th><th class="hide-sm">Account</th><th>Ended</th><th></th></tr></thead><tbody>${data.matches
+    .map((m) => {
+      const action = busyIds.has(m.matchId)
+        ? `<span class="hint">reviewing…</span>`
+        : reviewed.has(m.matchId)
+          ? `<button class="link" data-view="${m.matchId}">View review</button>`
+          : `<button class="link" data-review="${m.matchId}" data-acc="${m.accountId}" data-hero="${esc(m.hero)}">Review</button>`;
+      return `<tr>
+        <td>${esc(m.hero)}</td>
+        <td class="${m.won ? "win" : "loss"}">${m.won ? "Win" : "Loss"}</td>
+        <td class="num hide-sm">${esc(m.kda)}</td>
+        <td class="num hide-sm">${mmss(m.duration)}</td>
+        <td class="hide-sm">${esc(m.account)}</td>
+        <td>${ago(m.endTime * 1000)}</td>
+        <td style="text-align:right">${action}</td></tr>`;
+    })
+    .join("")}</tbody></table>${data.errors.length ? `<p class="hint">${esc(data.errors.join("; "))}</p>` : ""}`;
+  // The button may have turned from Review into View review; either one for the same match keeps focus.
+  if (focusId) $("matchesTable").querySelector(`[data-view="${focusId}"], [data-review="${focusId}"]`)?.focus();
+}
+
+function renderUpdate() {
+  const u = S.update, st = u.status;
+  $("autoUpdate").checked = u.auto;
+  $("updateStatus").textContent = u.checking
+    ? "Checking…"
+    : st
+      ? `${st.message}${st.branch ? ` (branch ${st.branch})` : ""} Checked ${ago(st.checkedAt)}.`
+      : "Not checked yet.";
+  const show = st && (st.state === "available" || (st.state === "blocked" && st.behind > 0));
+  $("updateBanner").hidden = !show;
+  if (show) {
+    $("updateTitle").textContent = st.state === "available" ? `Update available: ${st.behind} change${st.behind > 1 ? "s" : ""}` : st.message;
+    $("updateList").innerHTML = st.incoming.slice(0, 5).map((x) => `<li>${esc(x)}</li>`).join("");
+    $("applyUpdate").hidden = st.state !== "available";
+  }
+}
+
+function render() {
+  renderChips();
+  renderGsi();
+  renderWatcher();
+  renderData();
+  renderUpdate();
+  if (lastMatches && S.accounts.length) renderMatches(lastMatches, false);
+}
+
+// ---------- markdown (escaped first, so review text cannot inject HTML) ----------
+function inline(s) {
+  return esc(s)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    // Italic only when the asterisks are not inside a word, so "2*3 and 4*5" stays as typed.
+    .replace(/(^|[^\w*])\*(?!\s)([^*]+?)\*(?![\w*])/g, "$1<em>$2</em>");
+}
+const ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+function markdown(src) {
+  const lines = src.replace(/\r/g, "").split("\n");
+  const out = [];
+  let i = 0;
+  // Parse list items whose indent is >= base into nested <ul>/<ol>. Blank lines between items of
+  // the same list are allowed (Claude often writes "1. A\n\n2. B").
+  function list(base) {
+    const first = lines[i].match(ITEM);
+    const ordered = /\d/.test(first[2]);
+    const start = ordered ? parseInt(first[2], 10) : 1;
+    const items = [];
+    while (i < lines.length) {
+      let m = lines[i].match(ITEM);
+      if (!m) {
+        // Skip blank lines only if the list continues after them.
+        let j = i;
+        while (j < lines.length && !lines[j].trim()) j++;
+        const next = j < lines.length ? lines[j].match(ITEM) : null;
+        if (j > i && next && next[1].length >= base) { i = j; continue; }
+        break;
+      }
+      const indent = m[1].length;
+      if (indent < base) break;
+      if (indent > base && items.length) { items[items.length - 1].children += list(indent); continue; }
+      if (/\d/.test(m[2]) !== ordered) break;
+      i++;
+      let text = m[3];
+      while (i < lines.length && lines[i].trim() && !ITEM.test(lines[i]) && /^\s+\S/.test(lines[i])) text += " " + lines[i++].trim();
+      items.push({ text, children: "" });
+    }
+    const body = items.map((it) => `<li>${inline(it.text)}${it.children}</li>`).join("");
+    return ordered ? `<ol${start !== 1 ? ` start="${start}"` : ""}>${body}</ol>` : `<ul>${body}</ul>`;
+  }
+  while (i < lines.length) {
+    const l = lines[i];
+    if (!l.trim()) { i++; continue; }
+    let m;
+    if ((m = l.match(/^(#{1,6})\s+(.*)/))) { out.push(`<h3>${inline(m[2])}</h3>`); i++; continue; }
+    if (/^\s*\|/.test(l)) {
+      const rows = [];
+      while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i++]);
+      const cells = (r) => r.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+      const body = rows.filter((r) => !/^\s*\|?\s*:?-{2,}/.test(r));
+      out.push(`<div class="table-wrap"><table>${body.map((r, k) => `<tr>${cells(r).map((c) => (k === 0 ? `<th>${inline(c)}</th>` : `<td>${inline(c)}</td>`)).join("")}</tr>`).join("")}</table></div>`);
+      continue;
+    }
+    if ((m = l.match(ITEM))) { out.push(list(m[1].length)); continue; }
+    const para = [];
+    while (i < lines.length && lines[i].trim() && !/^(#{1,6}\s|\s*\|)/.test(lines[i]) && !ITEM.test(lines[i])) para.push(lines[i++].trim());
+    out.push(`<p>${inline(para.join(" "))}</p>`);
+  }
+  return out.join("\n");
+}
+
+// ---------- data loading ----------
+async function loadState() {
+  S = await api("/api/state");
+  render();
+}
+async function loadAccounts() {
+  renderAccounts(S.accounts.map((a) => ({ ...a, rank: undefined })));
+  const r = await api("/api/accounts");
+  renderAccounts(r.accounts);
+}
+async function loadMatches(btn) {
+  // Remember keyboard focus: the table is rebuilt below and renderMatches restores it by match id.
+  const f = document.activeElement?.closest?.("#matchesTable button");
+  if (f) pendingFocus = f.dataset.view || f.dataset.review;
+  if (!S.accounts.length) {
+    lastMatches = null;
+    matchesKey = "";
+    $("matchesTable").innerHTML = `<div class="empty">Add an account to see matches.</div>`;
+    return;
+  }
+  if (!lastMatches) $("matchesTable").innerHTML = `<div class="empty">Loading…</div>`;
+  await busy(btn, async () => {
+    try {
+      renderMatches(await api("/api/matches?count=10"));
+    } catch (e) {
+      if (!lastMatches) $("matchesTable").innerHTML = `<div class="empty">Could not load matches: ${esc(e.message)} Try Refresh.</div>`;
+      throw e;
+    }
+  });
+}
+async function loadConfig() {
+  try { $("gsiConfig").textContent = (await api("/api/gsi/config")).config; } catch (e) { $("gsiConfig").textContent = e.message; }
+}
+
+// ---------- events ----------
+$("addForm").onsubmit = (e) => {
+  e.preventDefault();
+  const btn = e.submitter;
+  busy(btn, async () => {
+    const r = await api("/api/accounts", { action: $("accRole").value, account: $("accInput").value.trim(), label: $("accLabel").value.trim() });
+    toast(r.message);
+    $("accInput").value = ""; $("accLabel").value = "";
+    delete $("accRole").dataset.touched;
+    renderAccounts(r.accounts);
+    await loadState();
+    loadMatches();
+  });
+};
+$("accountsTable").onclick = (e) => {
+  const b = e.target.closest("button[data-act]");
+  if (!b) return;
+  if (b.dataset.act === "remove" && !confirm(`Remove account ${b.dataset.id} from your profile?`)) return;
+  busy(b, async () => {
+    const r = await api("/api/accounts", { action: b.dataset.act, account: b.dataset.id, label: b.dataset.label || undefined });
+    toast(r.message);
+    renderAccounts(r.accounts);
+    await loadState();
+    loadMatches();
+  });
+};
+$("saveNotes").onclick = (e) => busy(e.currentTarget, async () => toast((await api("/api/notes", { notes: $("notes").value })).message));
+$("accRole").onchange = () => ($("accRole").dataset.touched = "1");
+$("dotaDir").oninput = () => ($("dotaDir").dataset.touched = "1");
+$("installGsi").onclick = (e) =>
+  busy(e.currentTarget, async () => {
+    const r = await api("/api/gsi/install", { dotaDir: $("dotaDir").value.trim() });
+    delete $("dotaDir").dataset.touched;
+    toast(r.message);
+    await loadState();
+    loadConfig();
+  });
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-copy]");
+  if (!b) return;
+  navigator.clipboard?.writeText(b.dataset.copy).then(() => toast("Copied."), () => toast("Copy failed; select the text instead.", true));
+});
+$("startBtn").onclick = (e) => busy(e.currentTarget, async () => { toast((await api("/api/watcher/start", {})).message); await loadState(); });
+$("stopBtn").onclick = (e) => busy(e.currentTarget, async () => { toast((await api("/api/watcher/stop", {})).message); await loadState(); });
+for (const id of ["optGsi", "optParse", "optReview", "optAuto", "optPoll", "optWait", "optPort"]) $(id).addEventListener("input", () => (optsDirty = true));
+$("saveOpts").onclick = (e) =>
+  busy(e.currentTarget, async () => {
+    const r = await api("/api/watcher/options", {
+      gsi: $("optGsi").checked, parse: $("optParse").checked, review: $("optReview").checked, autostart: $("optAuto").checked,
+      pollMin: Number($("optPoll").value), waitMin: Number($("optWait").value), port: Number($("optPort").value),
+    });
+    optsDirty = false;
+    toast(r.message);
+    await loadState();
+    loadConfig();
+  });
+$("refreshMatches").onclick = (e) => loadMatches(e.currentTarget);
+$("matchesTable").onclick = (e) => {
+  const v = e.target.closest("button[data-view]");
+  if (v) return showReview(v.dataset.view, v);
+  const r = e.target.closest("button[data-review]");
+  if (r) busy(r, async () => {
+    toast((await api("/api/review", { matchId: Number(r.dataset.review), accountId: Number(r.dataset.acc), hero: r.dataset.hero })).message);
+    await loadState();
+  });
+};
+async function showReview(id, btn) {
+  await busy(btn, async () => {
+    const r = await api(`/api/reviews/${encodeURIComponent(id)}`);
+    $("reviewTitle").textContent = `Match ${r.matchId}`;
+    $("reviewBody").innerHTML = markdown(r.markdown.replace(/^# Match \d+\s*/, ""));
+    $("reviewDlg").dataset.opener = id;
+    $("reviewDlg").showModal();
+  });
+}
+$("reviewDlg").addEventListener("close", () => {
+  $("matchesTable").querySelector(`[data-view="${$("reviewDlg").dataset.opener}"]`)?.focus();
+});
+$("closeDlg").onclick = () => $("reviewDlg").close();
+$("reviewDlg").addEventListener("click", (e) => { if (e.target === $("reviewDlg")) $("reviewDlg").close(); });
+$("stratzForm").onsubmit = (e) => {
+  e.preventDefault();
+  busy(e.submitter, async () => {
+    const key = $("stratzKey").value.trim();
+    if (!key) throw new Error("Paste a token first.");
+    toast((await api("/api/stratz", { key })).message);
+    $("stratzKey").value = "";
+    await loadState();
+  });
+};
+$("testStratz").onclick = (e) => busy(e.currentTarget, async () => { const r = await api("/api/stratz/test", {}); toast(r.message, !r.ok); });
+$("clearStratz").onclick = (e) => {
+  if (!confirm("Remove the STRATZ token from .env?")) return;
+  busy(e.currentTarget, async () => { toast((await api("/api/stratz", { key: null })).message); await loadState(); });
+};
+$("onMatch").oninput = () => ($("onMatch").dataset.touched = "1");
+$("checkUpdate").onclick = (e) => busy(e.currentTarget, async () => { toast((await api("/api/update/check", {})).message); await loadState(); });
+$("autoUpdate").onchange = (e) => busy(null, async () => {
+  try { toast((await api("/api/update/auto", { auto: e.target.checked })).message); }
+  finally { await loadState(); }
+});
+$("applyUpdate").onclick = (e) =>
+  busy(e.currentTarget, async () => {
+    const r = await api("/api/update/apply", {});
+    toast(r.message);
+    // The server restarts with the same link; wait for it to come back, then reload onto the new page.
+    if (r.restarting) {
+      for (let i = 0; i < 60; i++) {
+        await new Promise((res) => setTimeout(res, 1000));
+        try { if ((await api("/api/state")).pid !== S.pid) { location.reload(); return; } } catch {}
+      }
+      toast("The dashboard did not come back. Check the terminal.", true);
+    }
+  });
+$("saveOnMatch").onclick = (e) =>
+  busy(e.currentTarget, async () => {
+    toast((await api("/api/settings", { onMatch: $("onMatch").value })).message);
+    delete $("onMatch").dataset.touched;
+    await loadState();
+  });
+
+// ---------- boot ----------
+let prevReviews = 0;
+(async () => {
+  try {
+    await loadState();
+    $("notes").value = S.notes;
+    prevReviews = S.reviews.length;
+    loadConfig();
+    loadAccounts().catch((e) => toast(e.message, true));
+    loadMatches();
+  } catch (e) {
+    toast(`Could not reach the dashboard server: ${e.message}`, true);
+  }
+  setInterval(async () => {
+    try {
+      await loadState();
+      if (S.reviews.length !== prevReviews) {
+        if (S.reviews.length > prevReviews) toast(`New review saved for match ${S.reviews[0].matchId}.`);
+        prevReviews = S.reviews.length;
+        loadMatches();
+      }
+    } catch (e) {
+      $("chips").innerHTML = chip("bad", e instanceof TypeError ? "Dashboard server stopped" : e.message);
+    }
+  }, 3000);
+})();
+</script>
+</body>
+</html>

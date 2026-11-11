@@ -9,13 +9,16 @@ Review one match by id: where it was decided, how the lanes went, whether items 
 Your built-in Dota knowledge is out of date (facets were removed in 7.41, item and ability values have changed). Do not state current numbers, timings or meta claims unless a tool printed them in this session. When you quote a number, say which tool and sample it came from.
 
 ## Inputs
-Ask only for what is missing:
-- **Match id** (required). A positive integer.
-- **Whose game**: the hero (or player name) to focus on. If not given, ask; if the user does not care, focus on the losing side's core with the worst lane, and say so.
-- **Their bracket** (optional): helps judge timings, since comparison data is pro play.
+Run `bun run tools/Profile.ts` first. Then ask only for what is still missing:
+- **Match id** (required). A positive integer. For "my last game" / "the game I just played", run `bun run tools/LastMatch.ts` and use the `Latest:` match; if it ended more than a few hours ago, confirm it is the right game.
+- **Whose game**: if a saved account (main or alt) played in the match, focus on that player without asking. Otherwise ask for the hero or player name; if the user does not care, focus on the losing side's core with the worst lane, and say so.
+- **Their bracket**: the saved account's rank from Profile.ts. Helps judge timings, since comparison data is pro play.
+- **Notes** from Profile.ts (main role, goals): bias the takeaways toward them.
 
 ## Steps
 Run from the skill directory. The cache is on; never set DOTACOACH_NO_CACHE. On a rate-limit message wait 60s and retry once. A parsed match is cached forever, so rerunning GetMatch is free.
+
+0. If `reviews/<id>.md` exists, the post-game watcher already reviewed this match. Read it, and answer follow-up questions from it plus the tools below instead of redoing the whole review.
 
 1. `bun run tools/GetMatch.ts <id> --draft` for the overview, advantage table, player rows and draft. Add `--json` if you need exact fields (`parsed`, `advantage[]`, `players[].position_est`, `lane_role`, `units[]` for Spirit Bear items).
 2. If the header says `Replay parsed.`, pull the timelines GetMatch does not print (objectives, teamfights, 10-minute lane numbers, first purchase times, OpenDota percentiles). This reads the cached match only, no extra request:
@@ -46,6 +49,8 @@ for (const p of m.players) {
 6. Optional: `bun run tools/GetPatch.ts --hero="<focus hero>"` to check for kit changes. GetMatch prints only the major patch (e.g. `7.41`), so compare the match's start date with the patch release date GetPatch prints before saying which letter patch the game was on.
 
 ## Unparsed matches
+If the match is the user's own newest game, first run `bun run tools/LastMatch.ts --parse --wait=10` (parses usually finish in 2-10 minutes). When it prints `parsed`, it has already refreshed the cache, so rerun GetMatch normally. If it is still unparsed, continue below.
+
 GetMatch prints `Replay not parsed; missing ...` and a link. You still have result, duration, K/D/A, LH/DN, GPM/XPM, net worth, hero and tower damage, final items and the draft. You do not have advantage graphs, lanes, positions, objectives, purchase times. Do not infer timings or lane results. Tell the user they can request a parse on the printed opendota.com page and rerun later (unparsed results are refreshed after 1h). Meanwhile give takeaways only from end-of-game numbers, the final build vs GetItemBuilds, and the draft, and label the review as limited.
 
 ## Reading the outputs
