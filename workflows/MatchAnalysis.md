@@ -43,10 +43,11 @@ for (const p of m.players) {
   console.log("   " + (big.join(", ") || "no purchase log"));
 }'
 ```
-3. `bun run tools/GetItemBuilds.ts "<focus hero>"` for what that hero usually buys and in which phase. Run it for the enemy core too if their item caused the loss.
-4. `bun run tools/GetMatchups.ts "<focus hero>" --vs="<enemy>"` for the 1-2 lane opponents and the enemy core that dominated. Use `--top=8` (default) only if the draft itself is the question.
-5. `bun run tools/GetHero.ts "<hero>"` for the focus hero and any enemy whose ability you will name in advice (debuff-immunity piercing, cooldowns, ranges).
-6. Optional: `bun run tools/GetPatch.ts --hero="<focus hero>"` to check for kit changes. GetMatch prints only the major patch (e.g. `7.41`), so compare the match's start date with the patch release date GetPatch prints before saying which letter patch the game was on.
+3. If parsed: `bun run tools/ReplayMap.ts <id>` (add `--account=<id>` or `--hero="<hero>"` if the focus player is not on a saved account). It prints the focus player's deaths with map spots and the enemy observers that were up nearby, their wards and how long they lasted, early-game lane position against the lane opponent, observer spots that lasted or were cleared early on both sides, enemy observers in their half nobody cleared, and teamfight locations. Reads the cached match; no extra request.
+4. `bun run tools/GetItemBuilds.ts "<focus hero>"` for what that hero usually buys and in which phase. Run it for the enemy core too if their item caused the loss.
+5. `bun run tools/GetMatchups.ts "<focus hero>" --vs="<enemy>"` for the 1-2 lane opponents and the enemy core that dominated. Use `--top=8` (default) only if the draft itself is the question.
+6. `bun run tools/GetHero.ts "<hero>"` for the focus hero and any enemy whose ability you will name in advice (debuff-immunity piercing, cooldowns, ranges).
+7. Optional: `bun run tools/GetPatch.ts --hero="<focus hero>"` to check for kit changes. GetMatch prints only the major patch (e.g. `7.41`), so compare the match's start date with the patch release date GetPatch prints before saying which letter patch the game was on.
 
 ## Unparsed matches
 If the match is the user's own newest game, first run `bun run tools/LastMatch.ts --parse --wait=10` (parses usually finish in 2-10 minutes). When it prints `parsed`, it has already refreshed the cache, so rerun GetMatch normally. If it is still unparsed, continue below.
@@ -71,11 +72,24 @@ Pick the first point where the eventual winner's lead became decisive and name w
 - Thrown games: the leading side loses the lead; find the teamfight or Roshan just before the swing.
 These cut-offs are coaching heuristics, not OpenDota definitions. If the data does not show a clear swing, say the game was a slow accumulation.
 
+## Map marks (positioning and warding)
+For a parsed match, save 2-5 coach marks so the dashboard map shows where to ward and where to stand. Save them before writing the answer:
+```
+bun run tools/ReplayMap.ts <id> --save-markers='[{"kind":"avoid","x":111,"y":160,"from":26,"to":30,"label":"Died here 28:21 with an enemy observer up at 116,157 and none of ours: walk this path only behind a sentry or with the team."}]'
+```
+- `kind`: `ward` (place an observer), `sentry` (deward or block), `position` (stand here instead), `avoid` (spot that got you killed).
+- Take every `x`,`y` from ReplayMap output: a death spot, a ward spot (yours, the enemy's, ones that lasted, ones cleared early), a lane spot or a fight centre. Never make up coordinates; the tool's zone names are coarse and do not tell you where cliffs or camps are.
+- Good sources: an enemy observer near the player's death (`sentry` at its spot); an observer spot that lasted 6 minutes on either side during the phase the player struggled (`ward` there); a spot where the player's own wards kept getting cleared (`avoid` placing there, say who cleared it); the player's lane centre vs the opponent's when they lost lane (`position`, with the reason).
+- `from`/`to` are minutes the advice applies to. The label (under 200 characters) states the evidence from this match and the action.
+- `--save-markers='[]'` clears them. Rerunning replaces earlier marks.
+- Unparsed matches: no marks; say the map needs a parse.
+
 ## Turning data into advice
 - Every takeaway must cite a number from this match (a time, a gold gap, a death count) and a comparison (lane opponent, GetItemBuilds phase, OpenDota percentile).
 - Lane lost: was it deaths (check `deaths before 10:00`), last hits, or a bad matchup (GetMatchups row clearly beyond the margin, plus the mechanism from GetHero)? Advice differs: positioning vs farm pattern vs lane or pick choice.
 - Late core item: if the item the hero buys in the 10-25 phase in GetItemBuilds arrived after 25:00, name the farm gap or the detour items bought first (e.g. extra components, a second support item). Do not quote a pro "standard timing" minute; the tool does not give one.
 - Wrong item: if the enemy had debuff immunity, evasion, illusions or heavy healing (from their final items and GetHero), check whether the focus player bought the answer and when.
+- Positioning and vision: use ReplayMap. A death with an enemy observer up nearby and none of yours is a vision problem; a death with your own observer nearby is a positioning or decision problem. Supports placing observers that keep getting cleared at the same spots should move them.
 - Supports: judge by deaths, hero damage, final utility items (Force Staff, Glimmer Cape, wards in backpack) and lane result for their core, not GPM.
 - Draft: one point only, if GetMatchups shows a significant bad row or the lineup had no answer to a key enemy mechanic. For All Draft pubs with the ban note, ignore ban order.
 - Make each takeaway an action for next game: what to do, when, and what signal to watch.
@@ -87,7 +101,8 @@ These cut-offs are coaching heuristics, not OpenDota definitions. If the data do
 4. Items: focus player's key timings vs GetItemBuilds phases and what the enemy built that mattered.
 5. Draft: one or two lines, or "not a factor".
 6. **Three takeaways**, numbered, each with the evidence and the action.
-7. Sources: GetMatch (OpenDota match, parsed/unparsed, cache line), GetItemBuilds sample (league matches, date range), GetMatchups population and STRATZ status as printed, any fallback reason.
+7. Map: one line naming the marks you saved (e.g. "3 map marks saved: sentry 121,111; ward 116,142; avoid 111,160"). Omit for unparsed matches.
+8. Sources: GetMatch (OpenDota match, parsed/unparsed, cache line), GetItemBuilds sample (league matches, date range), GetMatchups population and STRATZ status as printed, any fallback reason.
 
 ## Pitfalls
 - Presenting pro item or matchup samples as the user's bracket.

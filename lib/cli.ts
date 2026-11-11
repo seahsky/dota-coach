@@ -65,6 +65,7 @@ export const signedPct = (x: number, digits = 1) => `${x >= 0 ? "+" : ""}${(x * 
 export const num = (x: number) => x.toLocaleString("en-US");
 
 export function duration(sec: number): string {
+  if (sec < 0) return `-${duration(-sec)}`;
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${m}:${String(s).padStart(2, "0")}`;

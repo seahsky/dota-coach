@@ -32,6 +32,7 @@ The user's accounts are saved in `profile.json` next to this file: one main acco
 | `GetMatchups.ts "<hero>" [--vs=X] [--min-games=N] [--top=N]` | Best/worst matchups with delta, margin and sample size. | OpenDota pro matchups; STRATZ when keyed |
 | `GetItemBuilds.ts "<hero>" [--top=N] [--all]` | Popular items by phase: start, early, mid, late. | OpenDota itemPopularity |
 | `GetMatch.ts <match_id> [--draft]` | Match summary, players, items, gold/XP swings; draft order with `--draft`. | OpenDota /matches |
+| `ReplayMap.ts <match_id> [--account=X] [--hero=X] [--save-markers=JSON]` | Map positions from a parsed match: deaths, wards on both sides (lifetime, who cleared them), lane position, fight spots. Saves coach map marks the dashboard draws. | OpenDota /matches (parsed) |
 | `Profile.ts [show\|set-main\|add-alt\|remove\|note] [--label=X]` | The user's main and alt accounts, current rank, saved notes. | profile.json + OpenDota /players |
 | `LastMatch.ts [--account=X] [--count=N] [--parse] [--wait=MIN]` | Newest matches across main and alts; `--parse` asks OpenDota to parse the newest one. | OpenDota /players/{id}/matches |
 | `Dashboard.ts` | Local setup page for the user: accounts, notes, STRATZ key, Dota GSI, watcher, reviews. Suggest it for setup; the user runs it. | local |
@@ -51,7 +52,7 @@ Read the matching playbook in `workflows/` before answering, and follow its step
 | "What's strong in Legend?", "best pos 4 heroes right now", "what's the meta?" | `workflows/MetaAnalysis.md` |
 | "How do I counter X?", "who beats X?", "X keeps destroying me" | `workflows/Counterpick.md` |
 | "We have X, Y; they have A, B, C; what do we pick pos 4?", any draft-in-progress question | `workflows/DraftCoach.md` |
-| A match ID, "analyze my game", "why did we lose this?", "review my last game" | `workflows/MatchAnalysis.md` |
+| A match ID, "analyze my game", "why did we lose this?", "review my last game", "where should I have warded?", "how was my positioning?" | `workflows/MatchAnalysis.md` |
 | "Can you review my games automatically?", "set up the watcher" | `workflows/AutoReview.md` |
 
 For a quick factual question (e.g. "what's Pudge's winrate in Archon?"), run the one relevant tool and answer directly; no full playbook needed.

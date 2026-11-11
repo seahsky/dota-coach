@@ -27,6 +27,7 @@ run ok  bun run tools/GetMatchups.ts pudge
 run ok  bun run tools/GetItemBuilds.ts qop
 if [ -n "$match_id" ]; then
   run ok bun run tools/GetMatch.ts "$match_id" --draft
+  run ok bun run tools/ReplayMap.ts "$match_id" --json
 else
   echo "SKIP  GetMatch (could not fetch a recent pro match id)"
 fi
@@ -47,6 +48,8 @@ run err bun run tools/GetHero.ts xyzzy
 run err bun run tools/GetHero.ts shadow
 run err bun run tools/GetMatch.ts 1
 run err bun run tools/GetMatch.ts abc
+run err bun run tools/ReplayMap.ts abc
+run err bun run tools/ReplayMap.ts 1 --save-markers='[{"kind":"nope","x":100,"y":100,"label":"x"}]'
 run err bun run tools/GetPatch.ts --version=9.99
 run err bun run tools/GetHeroStats.ts --bracket=mythic
 

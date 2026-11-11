@@ -19,6 +19,7 @@ import {
   saveProfile,
   setMain,
 } from "../lib/profile.ts";
+import { buildMapData } from "../lib/replaymap.ts";
 import { hasStratzKey, stratzQuery } from "../lib/stratz.ts";
 import { type UpdateStatus, applyUpdate, checkForUpdate } from "../lib/update.ts";
 import {
@@ -486,6 +487,14 @@ await main(async () => {
       } catch {
         throw new HttpError(404, `No saved review for match ${rev[1]}.`);
       }
+    }
+
+    const mapReq = path.match(/^\/api\/map\/(\d{1,12})$/);
+    if (method === "GET" && mapReq) {
+      const acc = url.searchParams.get("account");
+      const accounts = profileAccounts(loadProfile()).map((a) => a.account_id);
+      if (acc && /^\d{1,10}$/.test(acc)) accounts.unshift(Number(acc));
+      return json(await buildMapData(mapReq[1]!, { accounts }));
     }
 
     throw new HttpError(404, "Not found.");

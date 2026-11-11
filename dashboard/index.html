@@ -22,6 +22,8 @@
   --bad: #b3261e;
   --bad-bg: #fbe4e2;
   --focus: #2f6fd6;
+  --ally: #2e7d4f; --enemy: #c0392b; --you: #2563c9; --coach: #b87400;
+  --map-bg: #e9e6df; --map-radiant: #dfe9df; --map-dire: #eedfdc; --map-river: #b9cde3; --map-lane: #c9c3b6;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color-scheme: light;
 }
@@ -42,6 +44,8 @@
     --bad: #f08c84;
     --bad-bg: #3d1f1d;
     --focus: #7aa7ff;
+    --ally: #6cc28f; --enemy: #f07a6e; --you: #7aa7ff; --coach: #f0b54a;
+    --map-bg: #1f1f1d; --map-radiant: #1f2a22; --map-dire: #2c201f; --map-river: #22344a; --map-lane: #3d3b36;
     color-scheme: dark;
   }
 }
@@ -49,6 +53,8 @@
   --bg: #141413; --surface: #1d1d1b; --surface-2: #262624; --border: #353531; --text: #ecebe7; --muted: #a19d94;
   --accent: #e0644b; --accent-text: #160b08; --ok: #7ccc9a; --ok-bg: #1d3326; --warn: #e7b65c; --warn-bg: #3a2e16;
   --bad: #f08c84; --bad-bg: #3d1f1d; --focus: #7aa7ff; color-scheme: dark;
+  --ally: #6cc28f; --enemy: #f07a6e; --you: #7aa7ff; --coach: #f0b54a;
+  --map-bg: #1f1f1d; --map-radiant: #1f2a22; --map-dire: #2c201f; --map-river: #22344a; --map-lane: #3d3b36;
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -126,7 +132,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 14px; margin-
 #toast.show { opacity: 1; }
 #toast.error { background: var(--bad); color: #fff; }
 dialog {
-  width: min(760px, calc(100% - 32px)); max-height: calc(100% - 48px); border: 1px solid var(--border);
+  width: min(980px, calc(100% - 32px)); max-height: calc(100% - 48px); border: 1px solid var(--border);
   border-radius: 12px; background: var(--surface); color: var(--text); padding: 0;
 }
 dialog::backdrop { background: rgba(0,0,0,.45); }
@@ -135,6 +141,26 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 .md h1, .md h2, .md h3 { font-size: 16px; margin: 16px 0 6px; text-transform: none; letter-spacing: 0; color: var(--text); }
 .md ul, .md ol { padding-left: 22px; }
 .md li { margin: 4px 0; }
+.mappane { padding: 16px 20px 4px; border-bottom: 1px solid var(--border); }
+.mappane[hidden] { display: none; }
+.map-grid { display: grid; grid-template-columns: minmax(0, 480px) minmax(220px, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 760px) { .map-grid { grid-template-columns: minmax(0, 1fr); } }
+.map-svg { width: 100%; height: auto; display: block; border-radius: 10px; border: 1px solid var(--border); background: var(--map-bg); touch-action: manipulation; }
+.map-svg text { font: 3px system-ui, sans-serif; fill: var(--muted); }
+.map-svg .pin text { font-size: 3.4px; font-weight: 700; fill: #fff; }
+.timeline { display: flex; gap: 8px; align-items: center; margin: 10px 0 2px; }
+.timeline input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.timeline output { font-variant-numeric: tabular-nums; min-width: 4.5em; text-align: right; font-size: 13px; }
+.layers { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px 12px; margin: 4px 0 12px; }
+.layers .check { font-size: 13px; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.sw.sq { border-radius: 2px; transform: rotate(45deg); width: 8px; height: 8px; }
+.sw.ring { background: none !important; border: 2px solid currentColor; }
+.coach-list { list-style: none; padding: 0; margin: 6px 0 0; font-size: 14px; }
+.coach-list li { display: flex; gap: 8px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.coach-list li:last-child { border-bottom: none; }
+.coach-num { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--coach); color: #fff; font-size: 12px; font-weight: 700; flex: none; }
+.map-detail { min-height: 2.6em; font-size: 13px; color: var(--muted); margin: 6px 0 0; }
 .banner {
   display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
   background: var(--warn-bg); color: var(--text); border-radius: 12px; padding: 12px 16px; margin: -8px 0 16px;
@@ -266,6 +292,26 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 
 <dialog id="reviewDlg" aria-labelledby="reviewTitle">
   <div class="dlg-head"><strong id="reviewTitle">Review</strong><button type="button" id="closeDlg">Close</button></div>
+  <div class="mappane" id="mapPane" hidden>
+    <div class="map-grid">
+      <div>
+        <svg class="map-svg" id="mapSvg" viewBox="62 62 132 132" role="img" aria-labelledby="mapCaption"></svg>
+        <div class="timeline">
+          <button type="button" id="mapPlay" aria-label="Play the timeline">Play</button>
+          <input type="range" id="mapTime" min="-90" max="2400" step="5" value="2400" aria-label="Game time">
+          <output id="mapTimeOut" for="mapTime"></output>
+        </div>
+        <label class="check"><input type="checkbox" id="mapWhole" checked> Show the whole game</label>
+        <p class="map-detail" id="mapDetail" aria-live="polite">Hover or tap a mark for details.</p>
+      </div>
+      <div>
+        <p class="hint" id="mapCaption"></p>
+        <div class="layers" id="mapLayers"></div>
+        <h3 style="margin-top:8px">Coach marks</h3>
+        <ol class="coach-list" id="coachList"></ol>
+      </div>
+    </div>
+  </div>
   <div class="md" id="reviewBody"></div>
 </dialog>
 <div id="toast" role="status" aria-live="polite"></div>
@@ -438,7 +484,7 @@ function renderMatches(data, force = true) {
   if (!force && key === matchesKey) return;
   matchesKey = key;
   const focused = document.activeElement?.closest?.("#matchesTable button");
-  const focusId = focused ? focused.dataset.view || focused.dataset.review : pendingFocus;
+  const focusId = focused ? focused.dataset.view || focused.dataset.review || focused.dataset.map : pendingFocus;
   pendingFocus = null;
   if (!data.matches.length) {
     $("matchesTable").innerHTML = `<div class="empty">${data.errors.length ? esc(data.errors.join("; ")) : "No matches found. Is Expose Public Match Data on in Dota's settings?"}</div>`;
@@ -451,6 +497,7 @@ function renderMatches(data, force = true) {
         : reviewed.has(m.matchId)
           ? `<button class="link" data-view="${m.matchId}">View review</button>`
           : `<button class="link" data-review="${m.matchId}" data-acc="${m.accountId}" data-hero="${esc(m.hero)}">Review</button>`;
+      const mapBtn = `<button class="link" data-map="${m.matchId}" data-acc="${m.accountId}">Map</button>`;
       return `<tr>
         <td>${esc(m.hero)}</td>
         <td class="${m.won ? "win" : "loss"}">${m.won ? "Win" : "Loss"}</td>
@@ -458,7 +505,7 @@ function renderMatches(data, force = true) {
         <td class="num hide-sm">${mmss(m.duration)}</td>
         <td class="hide-sm">${esc(m.account)}</td>
         <td>${ago(m.endTime * 1000)}</td>
-        <td style="text-align:right">${action}</td></tr>`;
+        <td style="text-align:right;white-space:nowrap">${mapBtn}${action}</td></tr>`;
     })
     .join("")}</tbody></table>${data.errors.length ? `<p class="hint">${esc(data.errors.join("; "))}</p>` : ""}`;
   // The button may have turned from Review into View review; either one for the same match keeps focus.
@@ -647,24 +694,242 @@ $("saveOpts").onclick = (e) =>
 $("refreshMatches").onclick = (e) => loadMatches(e.currentTarget);
 $("matchesTable").onclick = (e) => {
   const v = e.target.closest("button[data-view]");
-  if (v) return showReview(v.dataset.view, v);
+  if (v) return showReview(v.dataset.view, v, v.closest("tr")?.querySelector("[data-map]")?.dataset.acc);
+  const mp = e.target.closest("button[data-map]");
+  if (mp) return showReview(mp.dataset.map, mp, mp.dataset.acc, true);
   const r = e.target.closest("button[data-review]");
   if (r) busy(r, async () => {
     toast((await api("/api/review", { matchId: Number(r.dataset.review), accountId: Number(r.dataset.acc), hero: r.dataset.hero })).message);
     await loadState();
   });
 };
-async function showReview(id, btn) {
+// ---------- replay map ----------
+// OpenDota map cells: x,y about 64-192, y grows north. SVG y grows down, so flip around 128.
+const FY = (y) => 256 - y;
+const NS = "http://www.w3.org/2000/svg";
+const MAP = { d: null, timer: null, layers: null };
+const LAYERS = [
+  { key: "coach", label: "Coach marks", sw: "background:var(--coach)", on: true },
+  { key: "allyWards", label: "Your team's wards", sw: "background:var(--ally)", on: true },
+  { key: "enemyWards", label: "Enemy wards", sw: "background:var(--enemy)", on: true },
+  { key: "deaths", label: "Deaths in fights", sw: "background:var(--muted)", on: true },
+  { key: "fights", label: "Teamfights", sw: "color:var(--muted)", ring: true, on: false },
+  { key: "laneYou", label: "Your lane position", sw: "background:var(--you)", on: true },
+  { key: "laneOpp", label: "Lane opponent", sw: "background:var(--enemy)", on: false },
+  { key: "traffic", label: "Where heroes walked (early game)", sw: "background:var(--muted)", on: true },
+];
+const mmssSigned = (t) => (t < 0 ? "-" : "") + mmss(Math.abs(t));
+
+function el(tag, attrs, title) {
+  const n = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  if (title) {
+    const t = document.createElementNS(NS, "title");
+    t.textContent = title;
+    n.appendChild(t);
+    n.dataset.info = title;
+    n.setAttribute("tabindex", "0");
+  }
+  return n;
+}
+function centroidOf(cells) {
+  let n = 0, sx = 0, sy = 0;
+  for (const [x, y, c] of cells) { n += c; sx += x * c; sy += y * c; }
+  return n ? { x: sx / n, y: sy / n } : null;
+}
+function mapBase(svg) {
+  const g = el("g", { "aria-hidden": "true" });
+  g.append(
+    el("rect", { x: 62, y: 62, width: 132, height: 132, fill: "var(--map-bg)" }),
+    // Radiant half is x+y < 256, which after the flip is the triangle under the river diagonal.
+    el("polygon", { points: "62,62 62,194 194,194", fill: "var(--map-radiant)" }),
+    el("polygon", { points: "62,62 194,62 194,194", fill: "var(--map-dire)" }),
+    el("line", { x1: 64, y1: 64, x2: 192, y2: 192, stroke: "var(--map-river)", "stroke-width": 7, "stroke-linecap": "round" }),
+  );
+  const lane = (pts) => el("polyline", { points: pts.map(([x, y]) => `${x},${FY(y)}`).join(" "), fill: "none", stroke: "var(--map-lane)", "stroke-width": 2.2, "stroke-linejoin": "round", "stroke-linecap": "round" });
+  // Only the mid lane is drawn: side lanes show up in the "where heroes walked" layer from the match itself.
+  g.append(lane([[90, 90], [166, 166]]));
+  const label = (x, y, text, anchor = "start") => { const t = el("text", { x, y, "text-anchor": anchor }); t.textContent = text; return t; };
+  g.append(label(65, 191, "Radiant base"), label(191, 67, "Dire base", "end"), label(65, 67, "Top"), label(191, 191, "Bot", "end"));
+  svg.appendChild(g);
+}
+
+function renderMap(d) {
+  stopMap();
+  MAP.d = d && !d.error ? d : null;
+  $("mapPane").hidden = false;
+  const svg = $("mapSvg");
+  svg.replaceChildren();
+  mapBase(svg);
+  if (!MAP.d) {
+    $("mapCaption").textContent = d?.error ? `Map unavailable: ${d.error}` : "Map unavailable.";
+    $("mapLayers").replaceChildren(); $("coachList").replaceChildren();
+    for (const id of ["mapPlay", "mapTime", "mapWhole"]) $(id).disabled = true;
+    return;
+  }
+  if (!MAP.d.parsed) {
+    $("mapCaption").textContent = "This replay is not parsed yet, so there are no ward, death or lane positions. Parses usually finish a few minutes after the game; reopen the map later.";
+    $("mapLayers").replaceChildren(); $("coachList").replaceChildren();
+    for (const id of ["mapPlay", "mapTime", "mapWhole"]) $(id).disabled = true;
+    return;
+  }
+  for (const id of ["mapPlay", "mapTime", "mapWhole"]) $(id).disabled = false;
+  const f = d.focus != null ? d.players[d.focus] : null;
+  $("mapCaption").textContent = f
+    ? `${f.hero}, ${f.team === "radiant" ? "Radiant" : "Dire"}. Green is your team, red the enemy, blue you. Circles are observers, diamonds sentries, crosses deaths; a struck-through ward was cleared early. River and mid lane are drawn roughly; every mark is at its recorded spot.`
+    : "None of your accounts is in this match: green is Radiant, red Dire. River and mid lane are drawn roughly; every mark is at its recorded spot.";
+  MAP.layers ??= Object.fromEntries(LAYERS.map((l) => [l.key, l.on]));
+  $("mapLayers").innerHTML = LAYERS.map((l) => `<label class="check"><input type="checkbox" data-layer="${l.key}" ${MAP.layers[l.key] ? "checked" : ""}><span class="sw${l.ring ? " ring" : ""}" style="${l.sw}"></span>${esc(l.label)}</label>`).join("");
+  const start = Math.min(-90, ...d.wards.map((w) => w.placed));
+  $("mapTime").min = String(Math.floor(start / 5) * 5);
+  $("mapTime").max = String(d.duration);
+  $("mapTime").value = String(d.duration);
+  $("mapWhole").checked = true;
+  $("coachList").innerHTML = d.markers.length
+    ? d.markers.map((m, i) => `<li><span class="coach-num">${i + 1}</span><span><strong>${esc({ ward: "Ward", sentry: "Sentry", position: "Stand here", avoid: "Avoid" }[m.kind])}</strong>${m.from != null || m.to != null ? ` <span class="hint">${m.from ?? 0}-${m.to ?? "end"} min</span>` : ""}<br>${esc(m.label)}</span></li>`).join("")
+    : `<li class="hint">No coach marks for this match. Reviews written from now on add them.</li>`;
+  drawMap();
+}
+
+function drawMap() {
+  const d = MAP.d;
+  if (!d) return;
+  const svg = $("mapSvg");
+  svg.querySelector("#mapData")?.remove();
+  const g = el("g", { id: "mapData" });
+  const whole = $("mapWhole").checked;
+  const t = Number($("mapTime").value);
+  $("mapTimeOut").textContent = whole ? "whole game" : mmssSigned(t);
+  const f = d.focus != null ? d.players[d.focus] : null;
+  const myTeam = f ? f.team : "radiant";
+  const side = (team) => (team === myTeam ? "var(--ally)" : "var(--enemy)");
+  const L = MAP.layers;
+
+  const heat = (cells, fill, maxOpacity) => {
+    const max = Math.max(1, ...cells.map((c) => c[2]));
+    for (const [x, y, n] of cells) g.appendChild(el("rect", { x: x - 0.5, y: FY(y) - 0.5, width: 1, height: 1, fill, "fill-opacity": (maxOpacity * Math.log1p(n) / Math.log1p(max)).toFixed(3) }));
+  };
+  if (L.traffic) {
+    const all = new Map();
+    for (const cells of d.lanePos) for (const [x, y, n] of cells) all.set(`${x},${y}`, [x, y, (all.get(`${x},${y}`)?.[2] ?? 0) + n]);
+    heat([...all.values()], "var(--text)", 0.22);
+  }
+  if (f && L.laneOpp) {
+    const mine = centroidOf(d.lanePos[f.slot] ?? []);
+    if (mine) for (const p of d.players) {
+      const c = p.team !== f.team && centroidOf(d.lanePos[p.slot] ?? []);
+      if (c && Math.hypot(c.x - mine.x, c.y - mine.y) < 25) heat(d.lanePos[p.slot], "var(--enemy)", 0.6);
+    }
+  }
+  if (f && L.laneYou) heat(d.lanePos[f.slot] ?? [], "var(--you)", 0.8);
+
+  if (L.fights) for (const fi of d.fights) {
+    if (fi.x == null) continue;
+    if (!whole && !(fi.start - 10 <= t && t <= fi.end + 30)) continue;
+    const n = fi.radiantDeaths + fi.direDeaths;
+    g.appendChild(el("circle", { cx: fi.x, cy: FY(fi.y), r: 3 + n, fill: "none", stroke: "var(--muted)", "stroke-width": 0.5, "stroke-dasharray": "1.5 1" },
+      `Teamfight ${mmss(fi.start)}-${mmss(fi.end)}: Radiant lost ${fi.radiantDeaths}, Dire lost ${fi.direDeaths}`));
+  }
+
+  for (const w of d.wards) {
+    const mineTeam = w.team === myTeam;
+    if (mineTeam ? !L.allyWards : !L.enemyWards) continue;
+    const end = w.removed ?? d.duration;
+    if (!whole && !(w.placed <= t && t < end)) continue;
+    const who = d.players[w.slot];
+    const life = w.removed == null ? "lasted to the end" : w.early ? `cleared after ${mmss(w.removed - w.placed)}${w.by ? ` by ${w.by}` : ""}` : `lasted ${mmss(w.removed - w.placed)}`;
+    const info = `${w.type === "obs" ? "Observer" : "Sentry"} by ${who.hero} at ${mmssSigned(w.placed)}, ${life}`;
+    const own = f && w.slot === f.slot;
+    const attrs = { fill: w.type === "obs" ? side(w.team) : "none", stroke: own ? "var(--you)" : side(w.team), "stroke-width": own ? 0.9 : 0.6, opacity: whole && w.early ? 0.5 : 1 };
+    const node = w.type === "obs"
+      ? el("circle", { cx: w.x, cy: FY(w.y), r: 1.7, ...attrs }, info)
+      : el("rect", { x: w.x - 1.2, y: FY(w.y) - 1.2, width: 2.4, height: 2.4, transform: `rotate(45 ${w.x} ${FY(w.y)})`, ...attrs }, info);
+    g.appendChild(node);
+    if (w.early && whole) g.appendChild(el("path", { d: `M${w.x - 1.4} ${FY(w.y) - 1.4}l2.8 2.8m0 -2.8l-2.8 2.8`, stroke: "var(--text)", "stroke-width": 0.4, "pointer-events": "none" }));
+  }
+
+  if (L.deaths) for (const k of d.deaths) {
+    if (!whole && !(k.time <= t && t <= k.time + 45)) continue;
+    const p = d.players[k.slot];
+    const you = f && k.slot === f.slot;
+    const s = you ? 2.2 : 1.5;
+    g.appendChild(el("path", {
+      d: `M${k.x - s} ${FY(k.y) - s}l${2 * s} ${2 * s}m0 ${-2 * s}l${-2 * s} ${2 * s}`,
+      stroke: you ? "var(--you)" : side(p.team), "stroke-width": you ? 1.1 : 0.7, "stroke-linecap": "round",
+    }, `${you ? "You" : p.hero} died at ${mmss(k.time)}`));
+  }
+
+  if (L.coach) d.markers.forEach((m, i) => {
+    const active = whole || ((m.from == null || t >= m.from * 60) && (m.to == null || t <= m.to * 60));
+    if (!active) return;
+    const pin = el("g", { class: "pin" }, `${i + 1}. ${m.label}`);
+    pin.append(
+      el("circle", { cx: m.x, cy: FY(m.y), r: 2.8, fill: m.kind === "avoid" ? "var(--enemy)" : "var(--coach)", stroke: "var(--surface)", "stroke-width": 0.5 }),
+    );
+    const num = el("text", { x: m.x, y: FY(m.y) + 1.2, "text-anchor": "middle" });
+    num.textContent = String(i + 1);
+    pin.appendChild(num);
+    g.appendChild(pin);
+  });
+  svg.appendChild(g);
+  svg.setAttribute("aria-label", `Map of match ${d.matchId}${whole ? "" : ` at ${mmssSigned(t)}`}: ${g.querySelectorAll("[data-info]").length} marks shown.`);
+}
+
+function stopMap() {
+  if (MAP.timer) clearInterval(MAP.timer);
+  MAP.timer = null;
+  $("mapPlay").textContent = "Play";
+  $("mapPlay").setAttribute("aria-label", "Play the timeline");
+}
+$("mapPlay").onclick = () => {
+  if (MAP.timer) return stopMap();
+  const r = $("mapTime");
+  if ($("mapWhole").checked || Number(r.value) >= Number(r.max)) r.value = r.min;
+  $("mapWhole").checked = false;
+  $("mapPlay").textContent = "Pause";
+  $("mapPlay").setAttribute("aria-label", "Pause the timeline");
+  MAP.timer = setInterval(() => {
+    r.value = String(Math.min(Number(r.max), Number(r.value) + 15));
+    drawMap();
+    if (Number(r.value) >= Number(r.max)) stopMap();
+  }, 180);
+  drawMap();
+};
+$("mapTime").oninput = () => { $("mapWhole").checked = false; drawMap(); };
+$("mapWhole").onchange = () => { stopMap(); drawMap(); };
+$("mapLayers").onchange = (e) => {
+  const k = e.target.dataset?.layer;
+  if (k) { MAP.layers[k] = e.target.checked; drawMap(); }
+};
+const showInfo = (e) => {
+  const n = e.target.closest?.("[data-info]");
+  if (n) $("mapDetail").textContent = n.dataset.info;
+};
+$("mapSvg").addEventListener("pointerover", showInfo);
+$("mapSvg").addEventListener("click", showInfo);
+$("mapSvg").addEventListener("focusin", showInfo);
+
+async function showReview(id, btn, acc, mapFirst = false) {
   await busy(btn, async () => {
-    const r = await api(`/api/reviews/${encodeURIComponent(id)}`);
-    $("reviewTitle").textContent = `Match ${r.matchId}`;
-    $("reviewBody").innerHTML = markdown(r.markdown.replace(/^# Match \d+\s*/, ""));
+    const hasReview = !!S?.reviews.some((r) => String(r.matchId) === String(id));
+    const [rev, map] = await Promise.all([
+      hasReview || !mapFirst ? api(`/api/reviews/${encodeURIComponent(id)}`) : Promise.resolve(null),
+      api(`/api/map/${encodeURIComponent(id)}${acc ? `?account=${encodeURIComponent(acc)}` : ""}`).catch((e) => ({ error: e.message })),
+    ]);
+    $("reviewTitle").textContent = `Match ${id}`;
+    $("reviewBody").innerHTML = rev
+      ? markdown(rev.markdown.replace(/^# Match \d+\s*/, ""))
+      : `<p class="hint">No written review for this match yet. Use Review in the match list to get one; it also adds coach marks to this map.</p>`;
+    renderMap(map);
     $("reviewDlg").dataset.opener = id;
+    $("reviewDlg").dataset.openerKind = btn?.dataset.map ? "map" : "view";
     $("reviewDlg").showModal();
   });
 }
 $("reviewDlg").addEventListener("close", () => {
-  $("matchesTable").querySelector(`[data-view="${$("reviewDlg").dataset.opener}"]`)?.focus();
+  stopMap();
+  const kind = $("reviewDlg").dataset.openerKind === "map" ? "data-map" : "data-view";
+  $("matchesTable").querySelector(`[${kind}="${$("reviewDlg").dataset.opener}"]`)?.focus();
 });
 $("closeDlg").onclick = () => $("reviewDlg").close();
 $("reviewDlg").addEventListener("click", (e) => { if (e.target === $("reviewDlg")) $("reviewDlg").close(); });
