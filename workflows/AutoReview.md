@@ -17,7 +17,7 @@ The slow part is OpenDota parsing the replay, not the trigger. GSI only reports 
 Fallback without GSI (Dota on a different machine than Claude Code, or the user does not want the launch option): `--poll=5` checks OpenDota every 5 minutes. A match appears on OpenDota a few minutes after it ends, so this adds about 5-10 minutes.
 
 ## Easiest path: the dashboard
-Tell the user to run this on the PC they play on and follow the page top to bottom (accounts, Connect Dota 2, Post-game reviews):
+Tell the user to run this on the PC they play on, open the link it prints (it ends in `?t=` and a code; only that link works), and follow the page top to bottom (accounts, Connect Dota 2, Post-game reviews):
 ```
 bun run tools/Dashboard.ts
 ```
@@ -40,7 +40,7 @@ It installs the GSI config, shows a "Signal from Dota" light that turns green on
 
 ## Options worth mentioning
 - `--no-review`: only request parses, so data is ready when they ask Claude later.
-- `DOTACOACH_ON_MATCH="<command>"` in `.env`: run their own command (a Discord webhook, a notification) instead of `claude -p`. It gets `DOTACOACH_MATCH_ID`, `DOTACOACH_ACCOUNT_ID`, `DOTACOACH_HERO`, `DOTACOACH_REVIEW_FILE` in the environment.
+- An after-match command (dashboard section 5, or `DOTACOACH_ON_MATCH` in the shell or `.env`): run their own command (a Discord webhook, a notification) instead of `claude -p`. It gets `DOTACOACH_MATCH_ID`, `DOTACOACH_ACCOUNT_ID`, `DOTACOACH_HERO`, `DOTACOACH_REVIEW_FILE` in the environment.
 - Each review is a full Claude Code run and uses the user's Claude usage like any other prompt.
 
 ## Pitfalls

@@ -44,7 +44,7 @@ A Claude Code skill that turns Claude into a Dota 2 coach. Claude pulls live dat
    bun run ~/.claude/skills/DotaCoach/tools/Dashboard.ts
    ```
 
-   It opens `http://127.0.0.1:3743/` in your browser. There you add your main account and alts (Friend ID or a profile link), write coaching notes, connect Dota 2, start the watcher, paste a STRATZ token, and read saved reviews. Everything is stored in the skill folder: accounts and notes in `profile.json`, keys in `.env`; git ignores both. The page only listens on your computer.
+   It opens `http://127.0.0.1:3743/?t=<code>` in your browser and prints that link in the terminal. Only that link works, and the code changes every run, so other programs and users on the PC can't use the page. There you add your main account and alts (Friend ID or a profile link), write coaching notes, connect Dota 2, start the watcher, paste a STRATZ token, and read saved reviews. Everything is stored in the skill folder: accounts, notes and watcher settings in `profile.json`, the STRATZ key in `.env`; git ignores both. The page only listens on your computer.
 
    You can skip the dashboard: tell Claude "my Dota account is <Friend ID>" and it saves it with `tools/Profile.ts`, or run that yourself:
 
@@ -136,7 +136,7 @@ Environment variables (shell or `.env`):
 | `DOTACOACH_NO_CACHE=1` | Skip the cache for this run. |
 | `DOTACOACH_CACHE_DIR` | Use a different cache directory. |
 | `DOTACOACH_PROFILE` | Use a different profile file instead of `profile.json` in the skill folder. |
-| `DOTACOACH_ON_MATCH` | Command WatchMatches runs after a game instead of `claude -p`. |
+| `DOTACOACH_ON_MATCH` | Command the watcher runs after a game instead of `claude -p`. A command saved in the dashboard (stored in `profile.json`) takes precedence. |
 | `DOTACOACH_DEBUG=1` | Print stack traces on unexpected errors. |
 
 Any of these can go in the skill folder's `.env` file instead of your shell.
