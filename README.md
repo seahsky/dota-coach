@@ -65,7 +65,9 @@ Every match in the dashboard's list has a **Map** button, and **View review** op
 
 Drag the time slider or press Play to see which wards were up at each moment. Reviews written by the watcher save the coach marks automatically; in a conversation, ask Claude to review a match and it saves them too. The marks live in `reviews/<match_id>.map.json`.
 
-The river and mid lane are drawn roughly; ward, death and lane positions are the recorded ones. Without a parsed replay there is nothing to draw.
+Ward, death and lane positions are the recorded ones. By default the map behind them is a rough outline (river and mid lane). To see the real Dota map, save a copy of the minimap picture yourself and add it under **Use the in-game map picture** below the map. Any top-down picture of the whole map works, with Radiant bottom-left; Liquipedia hosts the current patch's minimap. The skill does not ship Valve's map art, so the picture is stored only in your skill folder as `map.png`, `map.jpg` or `map.webp` (git-ignored). If the marks sit off the lanes, adjust the four edge numbers until the "where heroes walked" layer lies on the lanes, then save. The edges are kept in `profile.json`.
+
+Without a parsed replay there is nothing to draw.
 
 ## Updating
 

@@ -160,6 +160,9 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 .coach-list li { display: flex; gap: 8px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border); }
 .coach-list li:last-child { border-bottom: none; }
 .coach-num { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--coach); color: #fff; font-size: 12px; font-weight: 700; flex: none; }
+.map-img { margin: 4px 0 8px; }
+.map-img .grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 8px 0; }
+.map-img input[type=file] { font-size: 13px; max-width: 100%; }
 .map-detail { min-height: 2.6em; font-size: 13px; color: var(--muted); margin: 6px 0 0; }
 .banner {
   display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
@@ -303,6 +306,22 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
         </div>
         <label class="check"><input type="checkbox" id="mapWhole" checked> Show the whole game</label>
         <p class="map-detail" id="mapDetail" aria-live="polite">Hover or tap a mark for details.</p>
+        <details class="map-img" id="mapImgBox">
+          <summary id="mapImgSummary">Use the in-game map picture</summary>
+          <p class="hint">The coach doesn't ship Dota's map art, so save a copy of the minimap yourself: a top-down picture of the whole map, Radiant bottom-left (Liquipedia's "Gamemap simplemap" or "minimap" file for the current patch works). It stays in the skill folder as <code>map.png</code>, <code>.jpg</code> or <code>.webp</code> and is never uploaded or committed.</p>
+          <div class="row">
+            <div class="grow"><label for="mapImgFile">Picture (PNG, JPEG or WebP, up to 10 MB)</label><input type="file" id="mapImgFile" accept="image/png,image/jpeg,image/webp"></div>
+            <div class="fixed"><button type="button" class="danger" id="mapImgRemove">Remove</button></div>
+          </div>
+          <p class="hint">Edges: which map cell each side of the picture sits on. If the green and red ward marks sit off the lanes, nudge these until the "where heroes walked" layer lies on the lanes, then save.</p>
+          <div class="grid4">
+            <div><label for="mbLeft">Left</label><input type="number" id="mbLeft" step="0.5"></div>
+            <div><label for="mbRight">Right</label><input type="number" id="mbRight" step="0.5"></div>
+            <div><label for="mbBottom">Bottom</label><input type="number" id="mbBottom" step="0.5"></div>
+            <div><label for="mbTop">Top</label><input type="number" id="mbTop" step="0.5"></div>
+          </div>
+          <div class="row"><button type="button" id="mapBoundsSave">Save edges</button><button type="button" id="mapBoundsReset">Reset</button></div>
+        </details>
       </div>
       <div>
         <p class="hint" id="mapCaption"></p>
@@ -738,7 +757,16 @@ function centroidOf(cells) {
   return n ? { x: sx / n, y: sy / n } : null;
 }
 function mapBase(svg) {
-  const g = el("g", { "aria-hidden": "true" });
+  const g = el("g", { "aria-hidden": "true", id: "mapBase" });
+  const b = MAP.bounds;
+  if (MAP.imgUrl && b) {
+    g.append(
+      el("rect", { x: 62, y: 62, width: 132, height: 132, fill: "var(--map-bg)" }),
+      el("image", { href: MAP.imgUrl, x: b.left, y: FY(b.top), width: b.right - b.left, height: b.top - b.bottom, preserveAspectRatio: "none" }),
+    );
+    svg.appendChild(g);
+    return;
+  }
   g.append(
     el("rect", { x: 62, y: 62, width: 132, height: 132, fill: "var(--map-bg)" }),
     // Radiant half is x+y < 256, which after the flip is the triangle under the river diagonal.
@@ -753,6 +781,78 @@ function mapBase(svg) {
   g.append(label(65, 191, "Radiant base"), label(191, 67, "Dire base", "end"), label(65, 67, "Top"), label(191, 191, "Bot", "end"));
   svg.appendChild(g);
 }
+
+async function loadMapImage() {
+  const present = !!S?.mapImage?.present;
+  MAP.bounds = MAP.bounds ?? (S?.mapImage?.bounds ? { ...S.mapImage.bounds } : null);
+  if (!present) {
+    if (MAP.imgUrl) URL.revokeObjectURL(MAP.imgUrl);
+    MAP.imgUrl = null;
+  } else if (!MAP.imgUrl) {
+    const res = await fetch("/api/map-image", { headers: { "X-DotaCoach-Token": TOKEN } });
+    if (res.ok) MAP.imgUrl = URL.createObjectURL(await res.blob());
+  }
+  $("mapImgSummary").textContent = present ? "In-game map picture: on" : "Use the in-game map picture";
+  $("mapImgRemove").disabled = !present;
+  const b = MAP.bounds ?? S?.mapImage?.defaults;
+  if (b) [["mbLeft", "left"], ["mbRight", "right"], ["mbBottom", "bottom"], ["mbTop", "top"]].forEach(([id, k]) => ($(id).value = b[k]));
+  for (const id of ["mbLeft", "mbRight", "mbBottom", "mbTop", "mapBoundsSave", "mapBoundsReset"]) $(id).disabled = !present;
+}
+function mapCaption() {
+  const d = MAP.d;
+  if (!d?.parsed) return;
+  const f = d.focus != null ? d.players[d.focus] : null;
+  $("mapCaption").textContent = f
+    ? `${f.hero}, ${f.team === "radiant" ? "Radiant" : "Dire"}. Green is your team, red the enemy, blue you. Circles are observers, diamonds sentries, crosses deaths; a struck-through ward was cleared early. ${MAP.imgUrl ? "Every" : "River and mid lane are drawn roughly; every"} mark is at its recorded spot.`
+    : `None of your accounts is in this match: green is Radiant, red Dire. ${MAP.imgUrl ? "Every" : "River and mid lane are drawn roughly; every"} mark is at its recorded spot.`;
+}
+function redrawBase() {
+  const svg = $("mapSvg");
+  svg.querySelector("#mapBase")?.remove();
+  const data = svg.querySelector("#mapData");
+  mapBase(svg);
+  if (data) svg.appendChild(data); // keep marks above the picture
+  mapCaption();
+}
+$("mapImgFile").onchange = (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) { toast("The image is over 10 MB.", true); e.target.value = ""; return; }
+  const reader = new FileReader();
+  reader.onload = () => busy(null, async () => {
+    try {
+      toast((await api("/api/map-image", { image: reader.result })).message);
+      if (MAP.imgUrl) URL.revokeObjectURL(MAP.imgUrl);
+      MAP.imgUrl = null;
+      await loadState();
+      await loadMapImage();
+      redrawBase();
+    } finally { e.target.value = ""; }
+  });
+  reader.readAsDataURL(file);
+};
+$("mapImgRemove").onclick = (e) => busy(e.currentTarget, async () => {
+  toast((await api("/api/map-image", { image: null })).message);
+  await loadState();
+  await loadMapImage();
+  redrawBase();
+});
+const boundsFromInputs = () => ({ left: Number($("mbLeft").value), right: Number($("mbRight").value), bottom: Number($("mbBottom").value), top: Number($("mbTop").value) });
+for (const id of ["mbLeft", "mbRight", "mbBottom", "mbTop"]) $(id).addEventListener("input", () => {
+  const b = boundsFromInputs();
+  if (Object.values(b).every(Number.isFinite) && b.right - b.left >= 32 && b.top - b.bottom >= 32) { MAP.bounds = b; redrawBase(); }
+});
+$("mapBoundsSave").onclick = (e) => busy(e.currentTarget, async () => {
+  toast((await api("/api/map-image/bounds", { bounds: boundsFromInputs() })).message);
+  await loadState();
+});
+$("mapBoundsReset").onclick = (e) => busy(e.currentTarget, async () => {
+  toast((await api("/api/map-image/bounds", { reset: true })).message);
+  await loadState();
+  MAP.bounds = { ...S.mapImage.bounds };
+  await loadMapImage();
+  redrawBase();
+});
 
 function renderMap(d) {
   stopMap();
@@ -774,10 +874,7 @@ function renderMap(d) {
     return;
   }
   for (const id of ["mapPlay", "mapTime", "mapWhole"]) $(id).disabled = false;
-  const f = d.focus != null ? d.players[d.focus] : null;
-  $("mapCaption").textContent = f
-    ? `${f.hero}, ${f.team === "radiant" ? "Radiant" : "Dire"}. Green is your team, red the enemy, blue you. Circles are observers, diamonds sentries, crosses deaths; a struck-through ward was cleared early. River and mid lane are drawn roughly; every mark is at its recorded spot.`
-    : "None of your accounts is in this match: green is Radiant, red Dire. River and mid lane are drawn roughly; every mark is at its recorded spot.";
+  mapCaption();
   MAP.layers ??= Object.fromEntries(LAYERS.map((l) => [l.key, l.on]));
   $("mapLayers").innerHTML = LAYERS.map((l) => `<label class="check"><input type="checkbox" data-layer="${l.key}" ${MAP.layers[l.key] ? "checked" : ""}><span class="sw${l.ring ? " ring" : ""}" style="${l.sw}"></span>${esc(l.label)}</label>`).join("");
   const start = Math.min(-90, ...d.wards.map((w) => w.placed));
@@ -920,6 +1017,8 @@ async function showReview(id, btn, acc, mapFirst = false) {
     $("reviewBody").innerHTML = rev
       ? markdown(rev.markdown.replace(/^# Match \d+\s*/, ""))
       : `<p class="hint">No written review for this match yet. Use Review in the match list to get one; it also adds coach marks to this map.</p>`;
+    MAP.bounds = S?.mapImage?.bounds ? { ...S.mapImage.bounds } : null;
+    await loadMapImage().catch(() => {});
     renderMap(map);
     $("reviewDlg").dataset.opener = id;
     $("reviewDlg").dataset.openerKind = btn?.dataset.map ? "map" : "view";

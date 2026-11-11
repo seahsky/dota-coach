@@ -4,3 +4,7 @@ node_modules/
 .env.local
 profile.json
 reviews/
+# Minimap picture the user saves for the dashboard map; game art, never committed.
+map.png
+map.jpg
+map.webp
