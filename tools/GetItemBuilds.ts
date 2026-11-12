@@ -243,8 +243,8 @@ function render(r: Result): string {
   return out.join("\n");
 }
 
-await main(async () => {
-  const args = parseCli(USAGE, { strings: ["top"], booleans: ["all"] });
+export async function run(argv: string[]): Promise<string> {
+  const args = parseCli(USAGE, { strings: ["top"], booleans: ["all"] }, argv);
   const query = args.positionals.join(" ").trim();
   if (!query) throw new DotaError(`Give a hero name.\nUsage: ${USAGE}`);
   const top = intFlag(args.flags.top, "top", 8, 1, 100);
@@ -277,5 +277,7 @@ await main(async () => {
     filterRule: showAll ? "none (--all)" : FILTER_RULE,
     phases,
   };
-  output(args, result, () => render(result));
-});
+  return output(args, result, () => render(result));
+}
+
+if (import.meta.main) await main(() => run(Bun.argv.slice(2)));

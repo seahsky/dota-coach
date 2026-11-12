@@ -87,7 +87,7 @@ await main(async () => {
     saveProfile(profile);
   }
 
-  output(args, { file: PROFILE_FILE, changed: changed || null, accounts: rows, notes: profile.notes ?? null }, () => {
+  return output(args, { file: PROFILE_FILE, changed: changed || null, accounts: rows, notes: profile.notes ?? null }, () => {
     const lines: string[] = [];
     if (changed) lines.push(changed, "");
     if (!rows.length) {

@@ -7,7 +7,8 @@ import { DotaError } from "./errors.ts";
  * Who the user is: their main Dota account and any alts. Stored next to the
  * skill (git-ignored) so it survives across Claude sessions and git pulls.
  */
-export const PROFILE_FILE = process.env.DOTACOACH_PROFILE ?? join(import.meta.dir, "..", "profile.json");
+export const PROFILE_FILE =
+  typeof Bun === "undefined" ? "" : (process.env.DOTACOACH_PROFILE ?? join(import.meta.dir, "..", "profile.json"));
 
 export interface Account {
   account_id: number; // Steam32 / Dota friend id
@@ -20,7 +21,7 @@ export interface Profile {
   alts: Account[];
   /** Free-form coaching notes the user wants remembered (preferred roles, goals). */
   notes?: string;
-  /** Shared secret Dota's GSI config sends to WatchMatches. */
+  /** Shared secret Dota's GSI config sends to WatchMatches (or to the Cloudflare Worker's /gsi). */
   gsi_token?: string;
   /** Dota install folder chosen in the dashboard. */
   dota_dir?: string;
@@ -37,7 +38,9 @@ export interface Profile {
     review?: boolean;
     waitMin?: number;
     autostart?: boolean;
-    /** Command run after a match instead of claude -p. Kept here, not in .env, because Bun's .env loader rewrites $VARS. */
+    /** Cloudflare Worker only: automatic reviews on (the dashboard's Start/Stop). */
+    enabled?: boolean;
+    /** Command run after a match instead of the built-in review. Kept here, not in .env, because Bun's .env loader rewrites $VARS. */
     onMatch?: string;
   };
 }

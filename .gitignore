@@ -8,3 +8,5 @@ reviews/
 map.png
 map.jpg
 map.webp
+.dev.vars
+.wrangler/

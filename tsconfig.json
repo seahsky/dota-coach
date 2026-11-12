@@ -6,8 +6,14 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["bun-types"],
+    "types": [
+      "bun-types"
+    ],
     "allowImportingTsExtensions": true
   },
-  "include": ["lib/**/*.ts", "tools/**/*.ts"]
+  "include": [
+    "lib/**/*.ts",
+    "tools/**/*.ts",
+    "worker/**/*.ts"
+  ]
 }

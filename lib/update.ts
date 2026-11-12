@@ -219,8 +219,35 @@ export async function applyUpdate(): Promise<{ updated: boolean; status: UpdateS
   const cmd = status.mode === "reset" ? ["reset", "--keep", status.upstream!] : ["merge", "--ff-only", status.upstream!];
   const r = await git(cmd, 60_000);
   if (r.code !== 0) return { updated: false, status, error: r.err.split("\n")[0] || `git exited ${r.code}` };
+  const deps = await installDependencies();
   return {
     updated: true,
-    status: { ...status, state: "up-to-date", behind: 0, message: `Updated: ${status.behind} change${status.behind === 1 ? "" : "s"} installed.` },
+    status: {
+      ...status,
+      state: "up-to-date",
+      behind: 0,
+      message: `Updated: ${status.behind} change${status.behind === 1 ? "" : "s"} installed.${deps ? ` ${deps}` : ""}`,
+    },
   };
+}
+
+/**
+ * The review agent needs npm packages (Anthropic SDK, LangGraph), and an update can change them.
+ * Returns a note when the install failed, else "".
+ */
+async function installDependencies(): Promise<string> {
+  try {
+    const p = Bun.spawn([process.execPath, "install", "--production", "--frozen-lockfile"], {
+      cwd: SKILL_DIR,
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const timer = setTimeout(() => p.kill(), 180_000);
+    const [err, code] = await Promise.all([new Response(p.stderr).text(), p.exited]);
+    clearTimeout(timer);
+    return code === 0 ? "" : `Installing dependencies failed (${err.trim().split("\n").pop() || `exit ${code}`}); run \`bun install\` in the skill folder.`;
+  } catch (err) {
+    return `Installing dependencies failed (${err instanceof Error ? err.message : String(err)}); run \`bun install\` in the skill folder.`;
+  }
 }

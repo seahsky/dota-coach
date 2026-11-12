@@ -1,8 +1,4 @@
 import "./env.ts";
-import { mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { createHash } from "node:crypto";
 
 export const HOUR = 3600_000;
 
@@ -14,26 +10,36 @@ export const TTL = {
   match: Infinity,
 } as const;
 
-export const CACHE_DIR =
-  process.env.DOTACOACH_CACHE_DIR ??
-  join(process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "dotacoach");
-
-interface Entry<T> {
+export interface CacheEntry<T = unknown> {
   key: string;
   fetchedAt: number;
   data: T;
 }
 
-function pathFor(key: string): string {
-  const hash = createHash("sha1").update(key).digest("hex").slice(0, 20);
-  return join(CACHE_DIR, `${hash}.json`);
+/** Storage for the API cache: files locally (lib/cache-file.ts), Workers KV in the Cloudflare Worker. */
+export interface CacheBackend {
+  read(key: string): Promise<CacheEntry | null>;
+  write(entry: CacheEntry): Promise<void>;
 }
 
-export function cacheGet<T>(key: string, ttlMs: number): { data: T; fetchedAt: number } | null {
-  if (process.env.DOTACOACH_NO_CACHE) return null;
+let backend: CacheBackend | null = null;
+
+export function setCacheBackend(b: CacheBackend): void {
+  backend = b;
+}
+
+async function getBackend(): Promise<CacheBackend> {
+  backend ??= (await import("./cache-file.ts")).fileCache;
+  return backend;
+}
+
+const disabled = () => typeof process !== "undefined" && Boolean(process.env?.DOTACOACH_NO_CACHE);
+
+export async function cacheGet<T>(key: string, ttlMs: number): Promise<{ data: T; fetchedAt: number } | null> {
+  if (disabled()) return null;
   try {
-    const entry = JSON.parse(readFileSync(pathFor(key), "utf8")) as Entry<T>;
-    if (entry.key !== key) return null;
+    const entry = (await (await getBackend()).read(key)) as CacheEntry<T> | null;
+    if (!entry || entry.key !== key) return null;
     if (Date.now() - entry.fetchedAt > ttlMs) return null;
     return { data: entry.data, fetchedAt: entry.fetchedAt };
   } catch {
@@ -42,18 +48,14 @@ export function cacheGet<T>(key: string, ttlMs: number): { data: T; fetchedAt: n
 }
 
 /** Read an entry regardless of age. Used as a fallback when the network fails. */
-export function cacheGetStale<T>(key: string): { data: T; fetchedAt: number } | null {
+export function cacheGetStale<T>(key: string): Promise<{ data: T; fetchedAt: number } | null> {
   return cacheGet<T>(key, Infinity);
 }
 
-export function cacheSet<T>(key: string, data: T): void {
+export async function cacheSet<T>(key: string, data: T): Promise<void> {
   try {
-    mkdirSync(CACHE_DIR, { recursive: true });
-    const file = pathFor(key);
-    const tmp = `${file}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify({ key, fetchedAt: Date.now(), data } satisfies Entry<T>));
-    renameSync(tmp, file);
+    await (await getBackend()).write({ key, fetchedAt: Date.now(), data });
   } catch {
-    // A read-only or full disk should not break the tool; we just lose caching.
+    // A read-only or full disk, or a KV write limit, should not break the tool; we just lose caching.
   }
 }

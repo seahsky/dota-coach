@@ -175,6 +175,9 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   .hide-sm { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
+/* The same page serves the local dashboard and the Cloudflare Worker; S.mode picks which parts show. */
+body.cloud .local-only, body:not(.cloud) .cloud-only { display: none !important; }
+h3 .chip { text-transform: none; letter-spacing: normal; font-weight: 500; margin-left: 6px; }
 </style>
 </head>
 <body>
@@ -183,9 +186,9 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
     <h1>DotaCoach setup</h1>
     <button class="theme-toggle" id="themeBtn" type="button" aria-label="Switch color theme">Theme: auto</button>
   </header>
-  <p class="sub">Tell the coach who you are, connect your game, and get a review after every match.</p>
+  <p class="sub">Tell the coach who you are, connect your game, and get a review after every match.<span class="cloud-only"> Running on Cloudflare: nothing needs to stay open on your PC.</span></p>
   <div class="chips" id="chips" aria-live="polite"></div>
-  <div class="banner" id="updateBanner" hidden>
+  <div class="banner local-only" id="updateBanner" hidden>
     <div><strong id="updateTitle">Update available</strong><ul id="updateList"></ul></div>
     <button class="primary" type="button" id="applyUpdate">Update now</button>
   </div>
@@ -220,8 +223,10 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   <section class="card" id="gsi">
     <div class="card-head"><h2><span class="step">2</span>Connect Dota 2</h2><span id="gsiChip"></span></div>
     <p class="hint">Dota's Game State Integration tells the coach the moment a game ends. Do this on the PC you play on.</p>
+    <p class="hint cloud-only">Optional in the cloud: polling OpenDota (section 3) finds your games without it, a few minutes later. Dota posting game state to an internet address instead of your own PC has not been tested; if the light below never turns green, rely on polling.</p>
     <ol class="checklist">
-      <li>
+      <li class="cloud-only">Save the config file below (<button class="link" type="button" id="copyGsiConfig">Copy</button>) as <code>game/dota/cfg/gamestate_integration/gamestate_integration_dotacoach.cfg</code> inside your <code>dota 2 beta</code> folder (Steam: Dota 2 &gt; Manage &gt; Browse local files). It sends game state to <code id="gsiUrl"></code>.</li>
+      <li class="local-only">
         <div class="row">
           <div class="grow">
             <label for="dotaDir">Dota 2 folder (<code>dota 2 beta</code>)</label>
@@ -233,11 +238,11 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
       </li>
       <li>In Steam: right-click Dota 2 &gt; Properties &gt; General &gt; Launch Options, add
         <code>-gamestateintegration</code> <button class="link" type="button" data-copy="-gamestateintegration">Copy</button></li>
-      <li>Restart Dota, start the watcher below, and open any game (a bot match works). The light turns green when Dota checks in.</li>
+      <li>Restart Dota, <span class="local-only">start the watcher below,</span><span class="cloud-only">turn on automatic reviews below,</span> and open any game (a bot match works). The light turns green when Dota checks in.</li>
     </ol>
     <div class="status-line"><span>Signal from Dota:</span> <span id="gsiSignal" class="chip">never</span></div>
     <p class="hint">Valve has said GSI can cost some frame rate. Remove the launch option to turn it off.</p>
-    <details><summary>Show the config file</summary><pre id="gsiConfig">…</pre></details>
+    <details ><summary>Show the config file</summary><pre id="gsiConfig">…</pre></details>
   </section>
 
   <!-- 3. Watcher -->
@@ -251,12 +256,12 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
       <label class="check"><input type="checkbox" id="optGsi"> Listen for Dota (instant)</label>
       <label class="check"><input type="checkbox" id="optParse"> Request OpenDota replay parse</label>
       <label class="check"><input type="checkbox" id="optReview"> Write a review with Claude</label>
-      <label class="check"><input type="checkbox" id="optAuto"> Start watcher when this page starts</label>
+      <label class="check local-only"><input type="checkbox" id="optAuto"> Start watcher when this page starts</label>
     </div>
     <div class="grid2" style="margin-top:12px">
       <div><label for="optPoll">Also poll OpenDota every (min, 0 = off)</label><input type="number" id="optPoll" min="0" max="120"></div>
       <div><label for="optWait">Wait for parse up to (min)</label><input type="number" id="optWait" min="1" max="60"></div>
-      <div><label for="optPort">GSI port</label><input type="number" id="optPort" min="1024" max="65535"></div>
+      <div class="local-only"><label for="optPort">GSI port</label><input type="number" id="optPort" min="1024" max="65535"></div>
     </div>
     <div class="row" style="margin-top:12px"><button type="button" id="saveOpts">Save settings</button></div>
     <h3>Activity</h3>
@@ -272,20 +277,31 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 
   <!-- 5. Data -->
   <section class="card" id="data">
-    <div class="card-head"><h2><span class="step">5</span>Optional: STRATZ and custom command</h2><span id="stratzChip"></span></div>
-    <p class="hint">A STRATZ token adds ranked per-position stats and bracket matchups. Get one at stratz.com/api. It is saved to the skill's <code>.env</code>.</p>
-    <form class="row" id="stratzForm" autocomplete="off">
+    <div class="card-head"><h2><span class="step">5</span><span class="cloud-only">API keys</span><span class="local-only">API keys and custom command</span></h2></div>
+    <h3>Anthropic API key <span id="anthropicChip"></span></h3>
+    <p class="hint">Reviews call Claude through the Anthropic API and are billed to this key (console.anthropic.com).<span class="local-only"> It is saved to the skill's <code>.env</code>.</span></p>
+    <p class="hint cloud-only">On Cloudflare the key is a Worker secret. Set or change it from the skill folder with <code>npx wrangler secret put ANTHROPIC_API_KEY</code> <button class="link" type="button" data-copy="npx wrangler secret put ANTHROPIC_API_KEY">Copy</button></p>
+    <form class="row local-only" id="anthropicForm" autocomplete="off">
+      <div class="grow"><label for="anthropicKey">Anthropic API key</label><input type="password" id="anthropicKey" placeholder="sk-ant-..."></div>
+      <div class="fixed row"><button class="primary" type="submit">Save</button><button type="button" class="danger" id="clearAnthropic">Remove</button></div>
+    </form>
+    <h3>STRATZ token <span id="stratzChip"></span></h3>
+    <p class="hint">A STRATZ token adds ranked per-position stats and bracket matchups. Get one at stratz.com/api.<span class="local-only"> It is saved to the skill's <code>.env</code>.</span></p>
+    <p class="hint cloud-only">On Cloudflare: <code>npx wrangler secret put STRATZ_API_KEY</code> <button class="link" type="button" data-copy="npx wrangler secret put STRATZ_API_KEY">Copy</button> <button type="button" id="testStratzCloud">Test</button></p>
+    <form class="row local-only" id="stratzForm" autocomplete="off">
       <div class="grow"><label for="stratzKey">STRATZ token</label><input type="password" id="stratzKey" placeholder="paste token"></div>
       <div class="fixed row"><button class="primary" type="submit">Save</button><button type="button" id="testStratz">Test</button><button type="button" class="danger" id="clearStratz">Remove</button></div>
     </form>
+    <div class="local-only">
     <h3>After-match command</h3>
     <p class="hint">Runs instead of the Claude review, e.g. to post to Discord. It gets <code>DOTACOACH_MATCH_ID</code>, <code>DOTACOACH_ACCOUNT_ID</code>, <code>DOTACOACH_HERO</code> and <code>DOTACOACH_REVIEW_FILE</code> as environment variables. Leave empty to use Claude.</p>
     <p class="hint" id="onMatchEnv" hidden></p>
-    <div class="row"><div class="grow"><label for="onMatch">Command</label><input type="text" id="onMatch" placeholder="(empty: claude -p review)"></div><div class="fixed"><button type="button" id="saveOnMatch">Save</button></div></div>
+    <div class="row"><div class="grow"><label for="onMatch">Command</label><input type="text" id="onMatch" placeholder="(empty: Claude review)"></div><div class="fixed"><button type="button" id="saveOnMatch">Save</button></div></div>
     <p class="hint" id="paths"></p>
+    </div>
   </section>
   <!-- 6. Updates -->
-  <section class="card" id="updates">
+  <section class="card local-only" id="updates">
     <div class="card-head"><h2><span class="step">6</span>Updates</h2><button type="button" id="checkUpdate">Check now</button></div>
     <p class="hint" id="updateStatus">Not checked yet.</p>
     <label class="check"><input type="checkbox" id="autoUpdate"> Update automatically when the dashboard starts</label>
@@ -352,7 +368,11 @@ async function api(path, body) {
   }
   const res = await fetch(path, init);
   const data = await res.json().catch(() => ({}));
-  if (res.status === 403) throw new Error("This page is from an earlier run of the dashboard. Open the new link printed in the terminal.");
+  if (res.status === 403) {
+    throw new Error(S?.mode === "cloud" || data.error
+      ? data.error || "Signed out. Open your dashboard link again."
+      : "This page is from an earlier run of the dashboard. Open the new link printed in the terminal.");
+  }
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
 }
@@ -411,10 +431,10 @@ function renderChips() {
   const gsiFresh = s.watcher.running && s.watchOptions.gsi && lastGsi && Date.now() - lastGsi.at < 120000;
   $("chips").innerHTML = [
     hasMain ? chip("ok", `${s.accounts.length} account${s.accounts.length > 1 ? "s" : ""}`) : chip("bad", "No main account"),
-    s.gsi.upToDate ? chip("ok", "GSI config installed") : s.gsi.installed ? chip("warn", "GSI config outdated") : chip("warn", "GSI not installed"),
-    s.watcher.running ? chip("ok", "Watcher running") : chip("", "Watcher stopped"),
+    s.mode === "cloud" ? "" : s.gsi.upToDate ? chip("ok", "GSI config installed") : s.gsi.installed ? chip("warn", "GSI config outdated") : chip("warn", "GSI not installed"),
+    s.watcher.running ? chip("ok", s.mode === "cloud" ? "Automatic reviews on" : "Watcher running") : chip("", s.mode === "cloud" ? "Automatic reviews off" : "Watcher stopped"),
     gsiFresh ? chip("ok", "Dota connected") : "",
-    s.claudeOnPath || s.onMatchEffective ? "" : chip("bad", "claude not on PATH"),
+    s.anthropic.set || s.onMatchEffective ? "" : chip("bad", "No Anthropic API key"),
     s.stratz.set ? chip("ok", "STRATZ key set") : chip("", "No STRATZ key"),
   ].join("");
 }
@@ -441,12 +461,22 @@ function renderAccounts(list) {
 
 function renderGsi() {
   const g = S.gsi;
+  if (S.mode === "cloud") {
+    $("gsiUrl").textContent = g.url;
+    $("gsiChip").innerHTML = "";
+    renderGsiSignal();
+    return;
+  }
   const dir = $("dotaDir");
   if (document.activeElement !== dir && !dir.dataset.touched) dir.value = g.dotaDir || "";
   $("dotaDirHint").textContent = g.installed
     ? `Config at ${g.installed.path}` + (g.upToDate ? "" : ` (outdated: ${!g.installed.tokenMatches ? "token changed" : `port ${g.installed.port}, watcher uses ${S.watchOptions.port}`}; install again)`)
     : g.detected ? `Found Dota at ${g.detected}.` : "Could not find Dota automatically. In Steam: Dota 2 > Manage > Browse local files, then paste that folder.";
   $("gsiChip").innerHTML = g.upToDate ? chip("ok", "Installed") : g.installed ? chip("warn", "Outdated") : chip("warn", "Not installed");
+  renderGsiSignal();
+}
+
+function renderGsiSignal() {
   const last = S.watcher.lastGsi;
   const el = $("gsiSignal");
   if (!S.watcher.running || !S.watchOptions.gsi) { el.className = "chip"; el.textContent = S.watcher.running ? "GSI listening is off" : "watcher stopped"; }
@@ -463,15 +493,24 @@ function renderWatcher() {
   const w = S.watcher, o = S.watchOptions;
   $("startBtn").disabled = w.running;
   $("stopBtn").disabled = !w.running;
+  $("startBtn").textContent = S.mode === "cloud" ? "Turn on" : "Start watcher";
+  $("stopBtn").textContent = S.mode === "cloud" ? "Turn off" : "Stop";
   if (!optsDirty) {
     $("optGsi").checked = o.gsi; $("optParse").checked = o.parse; $("optReview").checked = o.review;
     $("optAuto").checked = o.autostart; $("optPoll").value = o.pollMin; $("optWait").value = o.waitMin; $("optPort").value = o.port;
   }
   const how = [o.gsi ? "listens for Dota" : null, o.pollMin ? `polls OpenDota every ${o.pollMin} min` : null].filter(Boolean).join(" and ");
-  const reviewer = S.onMatchEffective ? "runs your after-match command" : S.claudeOnPath ? "writes a review with Claude Code (uses your Claude usage)" : "cannot review: claude is not on PATH";
+  const reviewer = S.onMatchEffective
+    ? "runs your after-match command"
+    : S.anthropic.set
+      ? "writes a review with Claude (Anthropic API, billed to your key)"
+      : "cannot review: no Anthropic API key (section 5)";
+  const cloud = S.mode === "cloud";
+  const status = cloud ? (w.running ? "On. " : "Off. ") : w.running ? `Running since ${new Date(w.startedAt).toLocaleTimeString()}. ` : "Stopped. ";
   $("watchSummary").textContent =
-    `${w.running ? `Running since ${new Date(w.startedAt).toLocaleTimeString()}. ` : "Stopped. "}When a game ends it ${how || "does nothing (enable a trigger)"}, ` +
-    `${o.parse ? "requests an OpenDota parse, " : ""}then ${o.review ? reviewer : "stops (reviews off)"}. Keep this terminal open while you play.`;
+    `${status}When a game ends it ${how || "does nothing (enable a trigger)"}, ` +
+    `${o.parse ? "requests an OpenDota parse, " : ""}then ${o.review ? reviewer : "stops (reviews off)"}. ` +
+    (cloud ? "The cloud checks once a minute, so the review appears a few minutes after the parse." : "Keep this terminal open while you play.");
   const lines = w.log.map((l) => `[${new Date(l.at).toLocaleTimeString()}] ${l.text}`);
   if (w.current) lines.push(`… working on match ${w.current.matchId}${w.queue.length ? `, ${w.queue.length} queued` : ""}`);
   const log = $("log");
@@ -481,6 +520,9 @@ function renderWatcher() {
 }
 
 function renderData() {
+  $("anthropicChip").innerHTML = S.anthropic.set
+    ? chip(S.anthropic.fromEnvironment ? "warn" : "ok", S.anthropic.fromEnvironment ? `Key ${S.anthropic.masked} from your environment` : `Key ${S.anthropic.masked}`)
+    : chip("bad", "Not set");
   $("stratzChip").innerHTML = S.stratz.set
     ? chip(S.stratz.fromEnvironment ? "warn" : "ok", S.stratz.fromEnvironment ? `Key ${S.stratz.masked} from your environment` : `Key ${S.stratz.masked}`)
     : "";
@@ -532,6 +574,7 @@ function renderMatches(data, force = true) {
 }
 
 function renderUpdate() {
+  if (!S.update) return;
   const u = S.update, st = u.status;
   $("autoUpdate").checked = u.auto;
   $("updateStatus").textContent = u.checking
@@ -549,6 +592,7 @@ function renderUpdate() {
 }
 
 function render() {
+  document.body.classList.toggle("cloud", S.mode === "cloud");
   renderChips();
   renderGsi();
   renderWatcher();
@@ -1044,7 +1088,24 @@ $("stratzForm").onsubmit = (e) => {
     await loadState();
   });
 };
-$("testStratz").onclick = (e) => busy(e.currentTarget, async () => { const r = await api("/api/stratz/test", {}); toast(r.message, !r.ok); });
+$("testStratz").onclick = $("testStratzCloud").onclick = (e) =>
+  busy(e.currentTarget, async () => { const r = await api("/api/stratz/test", {}); toast(r.message, !r.ok); });
+$("anthropicForm").onsubmit = (e) => {
+  e.preventDefault();
+  busy(e.submitter, async () => {
+    const key = $("anthropicKey").value.trim();
+    if (!key) throw new Error("Paste a key first.");
+    toast((await api("/api/anthropic", { key })).message);
+    $("anthropicKey").value = "";
+    await loadState();
+  });
+};
+$("clearAnthropic").onclick = (e) => {
+  if (!confirm("Remove the Anthropic API key from .env? Reviews stop until you add one again.")) return;
+  busy(e.currentTarget, async () => { toast((await api("/api/anthropic", { key: null })).message); await loadState(); });
+};
+$("copyGsiConfig").onclick = () =>
+  navigator.clipboard?.writeText($("gsiConfig").textContent).then(() => toast("Config copied."), () => toast("Copy failed; open \"Show the config file\" and select it.", true));
 $("clearStratz").onclick = (e) => {
   if (!confirm("Remove the STRATZ token from .env?")) return;
   busy(e.currentTarget, async () => { toast((await api("/api/stratz", { key: null })).message); await loadState(); });
@@ -1088,6 +1149,8 @@ let prevReviews = 0;
   } catch (e) {
     toast(`Could not reach the dashboard server: ${e.message}`, true);
   }
+  // The cloud page polls less often: every request is a Worker invocation and a few D1 reads.
+  const every = S?.mode === "cloud" ? 15000 : 3000;
   setInterval(async () => {
     try {
       await loadState();
@@ -1099,7 +1162,7 @@ let prevReviews = 0;
     } catch (e) {
       $("chips").innerHTML = chip("bad", e instanceof TypeError ? "Dashboard server stopped" : e.message);
     }
-  }, 3000);
+  }, every);
 })();
 </script>
 </body>

@@ -28,7 +28,9 @@ After a match:
   --no-review             only request the parse
   --test=MATCH_ID         run the after-match steps once for MATCH_ID and exit
 
-The review runs \`claude -p\` in the skill folder and is saved to reviews/<match_id>.md. Set
+The review calls Claude through the Anthropic API (needs ANTHROPIC_API_KEY in the shell or .env;
+run \`bun install\` once) and is saved to reviews/<match_id>.md. DOTACOACH_MODEL and DOTACOACH_EFFORT
+pick the model (default claude-opus-5-5) and effort (default high). Set
 DOTACOACH_ON_MATCH to run your own command instead; it gets DOTACOACH_MATCH_ID, DOTACOACH_ACCOUNT_ID,
 DOTACOACH_HERO and DOTACOACH_REVIEW_FILE in its environment.`;
 

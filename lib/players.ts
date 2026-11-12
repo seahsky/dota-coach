@@ -112,7 +112,7 @@ export async function matchParsed(matchId: number): Promise<boolean> {
   if (!res.ok) return false;
   const m = (await res.json().catch(() => null)) as { version?: number | null } | null;
   if (!m?.version) return false;
-  cacheSet(url, m);
+  await cacheSet(url, m);
   return true;
 }
 

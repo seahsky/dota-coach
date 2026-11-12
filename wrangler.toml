@@ -1,0 +1,25 @@
+# Cloudflare Worker for the DotaCoach dashboard and post-game reviews. See README "Deploy to Cloudflare".
+name = "dotacoach"
+main = "worker/index.ts"
+compatibility_date = "2026-11-01"
+# node:util (argument parsing), node:async_hooks and process.env for the shared lib/ code.
+compatibility_flags = ["nodejs_compat"]
+
+# Once a minute: poll OpenDota if due, check pending replay parses, write at most one review.
+[triggers]
+crons = ["* * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dotacoach"
+# Paste the id that `npx wrangler d1 create dotacoach` prints.
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "worker/migrations"
+
+[vars]
+# Model and effort for reviews. Leave empty for the defaults in lib/coach/review.ts.
+DOTACOACH_MODEL = ""
+DOTACOACH_EFFORT = ""
+
+[observability]
+enabled = true

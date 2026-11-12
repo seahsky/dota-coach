@@ -11,12 +11,12 @@ await main(async () => {
   const args = parseCli(USAGE, { booleans: ["check"] });
   if (args.flags.check) {
     const s = await checkForUpdate();
-    output(args, s, () => [s.message, ...s.incoming.map((x) => `  - ${x}`)].join("\n"));
     if (s.state === "blocked" || s.state === "unavailable") process.exitCode = 1;
-    return;
+    return output(args, s, () => [s.message, ...s.incoming.map((x) => `  - ${x}`)].join("\n"));
   }
   const r = await applyUpdate();
-  output(args, r, () =>
+  if (r.error || r.status.state === "blocked" || r.status.state === "unavailable") process.exitCode = 1;
+  return output(args, r, () =>
     [
       r.error ? `Update failed: ${r.error}` : r.status.message,
       ...(r.updated ? r.status.incoming.map((x) => `  - ${x}`) : []),
@@ -25,5 +25,4 @@ await main(async () => {
       .filter(Boolean)
       .join("\n"),
   );
-  if (r.error || r.status.state === "blocked" || r.status.state === "unavailable") process.exitCode = 1;
 });

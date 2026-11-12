@@ -604,11 +604,13 @@ function markdown(r: Result): string {
   return L.join("\n");
 }
 
-await main(async () => {
-  const args = parseCli(USAGE);
+export async function run(argv: string[]): Promise<string> {
+  const args = parseCli(USAGE, {}, argv);
   const input = args.positionals.join(" ").trim();
   if (!input) throw new DotaError(`No hero given.\nUsage: ${USAGE}`);
   const hero = await resolveHero(input);
   const result = await build(hero);
-  output(args, result, () => markdown(result));
-});
+  return output(args, result, () => markdown(result));
+}
+
+if (import.meta.main) await main(() => run(Bun.argv.slice(2)));

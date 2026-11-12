@@ -498,7 +498,7 @@ await main(async () => {
     heroes: rows,
   };
 
-  output(args, result, () => {
+  return output(args, result, () => {
     const title = `## Hero ${sort === "winrate" ? "winrates" : "pick rates"}: ${role ? `${ROLE_NAMES[role]}, ` : ""}${dataBracket}`;
     const out = [title, ""];
     out.push(`Sample: ${sample.description}, ${sample.window}.`);

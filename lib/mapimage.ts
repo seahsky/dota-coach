@@ -7,7 +7,7 @@ import { DotaError } from "./errors.ts";
  * game art, so it is never shipped with the skill: the file is git-ignored and stays
  * on the user's computer.
  */
-const DIR = join(import.meta.dir, "..");
+const DIR = typeof Bun === "undefined" ? "" : join(import.meta.dir, "..");
 const TYPES = { png: "image/png", jpg: "image/jpeg", webp: "image/webp" } as const;
 type Ext = keyof typeof TYPES;
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -31,23 +31,30 @@ export function findMapImage(): { file: string; type: string } | null {
   return null;
 }
 
-function sniff(buf: Buffer): Ext | null {
-  if (buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "png";
-  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "jpg";
-  if (buf.subarray(0, 4).toString("latin1") === "RIFF" && buf.subarray(8, 12).toString("latin1") === "WEBP") return "webp";
+function sniff(buf: Uint8Array): Ext | null {
+  const at = (i: number, bytes: number[]) => bytes.every((b, j) => buf[i + j] === b);
+  if (at(0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "png";
+  if (at(0, [0xff, 0xd8, 0xff])) return "jpg";
+  if (at(0, [0x52, 0x49, 0x46, 0x46]) && at(8, [0x57, 0x45, 0x42, 0x50])) return "webp";
   return null;
+}
+
+/** Decode a base64 PNG, JPEG or WebP (a data: URL or bare base64) and check its type. */
+export function decodeMapImage(data: string): { bytes: Uint8Array; type: string; ext: Ext } {
+  const b64 = data.replace(/^data:[^,]*,/, "");
+  if (b64.length > (MAX_BYTES * 4) / 3 + 8) throw new DotaError("The image is over 10 MB.");
+  const bytes = Uint8Array.from(atob(b64.replace(/\s+/g, "")), (c) => c.charCodeAt(0));
+  const ext = sniff(bytes);
+  if (!ext) throw new DotaError("Use a PNG, JPEG or WebP image.");
+  return { bytes, type: TYPES[ext], ext };
 }
 
 /** Save a base64 PNG, JPEG or WebP (a data: URL or bare base64), replacing any earlier picture. */
 export function saveMapImage(data: string): string {
-  const b64 = data.replace(/^data:[^,]*,/, "");
-  if (b64.length > (MAX_BYTES * 4) / 3 + 8) throw new DotaError("The image is over 10 MB.");
-  const buf = Buffer.from(b64, "base64");
-  const ext = sniff(buf);
-  if (!ext) throw new DotaError("Use a PNG, JPEG or WebP image.");
+  const { bytes, ext } = decodeMapImage(data);
   const file = fileFor(ext);
   const tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, buf);
+  writeFileSync(tmp, bytes);
   removeMapImage();
   renameSync(tmp, file);
   return file;

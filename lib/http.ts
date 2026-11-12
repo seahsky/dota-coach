@@ -26,7 +26,7 @@ function rateLimitMessage(source: Source, res: Response): string {
     return (
       "OpenDota rate limit reached (free tier allows 60 requests/minute and 3,000/day" +
       (left ? `; ${left}` : "") +
-      "). Wait a minute and retry. Cached results in ~/.cache/dotacoach are reused automatically."
+      "). Wait a minute and retry. Cached results are reused automatically."
     );
   }
   return `${source} rate limit reached (HTTP 429). Wait a minute and retry.`;
@@ -43,7 +43,7 @@ export async function getJson<T>(url: string, opts: FetchOpts): Promise<T> {
 /** Like getJson, but also says whether the data came from a stale cache entry. */
 export async function getJsonMeta<T>(url: string, opts: FetchOpts): Promise<{ data: T; stale: boolean }> {
   if (opts.ttl > 0) {
-    const hit = cacheGet<T>(url, opts.ttl);
+    const hit = await cacheGet<T>(url, opts.ttl);
     if (hit) return { data: hit.data, stale: false };
   }
   const fresh = (data: T) => ({ data, stale: false });
@@ -56,14 +56,14 @@ export async function getJsonMeta<T>(url: string, opts: FetchOpts): Promise<{ da
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (err) {
-    const old = staleOrNull<T>(url, opts.source);
+    const old = await staleOrNull<T>(url, opts.source);
     if (old !== null) return stale(old);
     const reason = err instanceof Error && err.name === "TimeoutError" ? "timed out" : "could not connect";
     throw new DotaError(`${opts.source} request ${reason} (${new URL(url).host}). Check your network and retry.`);
   }
 
   if (res.status === 429) {
-    const old = staleOrNull<T>(url, opts.source, "rate limited");
+    const old = await staleOrNull<T>(url, opts.source, "rate limited");
     if (old !== null) return stale(old);
     throw new RateLimitError(rateLimitMessage(opts.source, res));
   }
@@ -74,7 +74,7 @@ export async function getJsonMeta<T>(url: string, opts: FetchOpts): Promise<{ da
   if (!res.ok) {
     const detail = await errorDetail(res);
     if (res.status >= 500) {
-      const old = staleOrNull<T>(url, opts.source);
+      const old = await staleOrNull<T>(url, opts.source);
       if (old !== null) return stale(old);
     }
     const what = opts.what ?? new URL(url).pathname;
@@ -88,7 +88,7 @@ export async function getJsonMeta<T>(url: string, opts: FetchOpts): Promise<{ da
   } catch {
     throw new DotaError(`${opts.source} returned a response that is not valid JSON.`);
   }
-  if (opts.ttl > 0) cacheSet(url, data);
+  if (opts.ttl > 0) await cacheSet(url, data);
   return fresh(data);
 }
 
@@ -107,11 +107,11 @@ async function errorDetail(res: Response): Promise<string> {
   }
 }
 
-function staleOrNull<T>(url: string, source: Source, why = "unreachable"): T | null {
-  const old = cacheGetStale<T>(url);
+async function staleOrNull<T>(url: string, source: Source, why = "unreachable"): Promise<T | null> {
+  const old = await cacheGetStale<T>(url);
   if (!old) return null;
   const age = Math.round((Date.now() - old.fetchedAt) / 3600_000);
-  process.stderr.write(`Note: ${source} ${why}; using cached data from ${age}h ago.\n`);
+  console.error(`Note: ${source} ${why}; using cached data from ${age}h ago.`);
   return old.data;
 }
 

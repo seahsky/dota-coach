@@ -1,6 +1,6 @@
 # DotaCoach
 
-A Claude Code skill that turns Claude into a Dota 2 coach. Claude pulls live data before giving advice. Patch notes come from Valve's datafeed. Hero stats, matchups, items and matches come from OpenDota. STRATZ is optional and adds ranked per-position stats and bracket-specific matchups.
+A Claude Code skill that turns Claude into a Dota 2 coach, plus a dashboard that reviews each of your games automatically, on your PC or hosted on Cloudflare. Claude pulls live data before giving advice. Patch notes come from Valve's datafeed. Hero stats, matchups, items and matches come from OpenDota. STRATZ is optional and adds ranked per-position stats and bracket-specific matchups.
 
 ## Setup
 
@@ -22,7 +22,13 @@ A Claude Code skill that turns Claude into a Dota 2 coach. Claude pulls live dat
    ln -s /path/to/dota-coach ~/.claude/skills/DotaCoach
    ```
 
-   The tools have no runtime dependencies, so there is no install step. Run `bun install` only if you want to typecheck.
+   Install the dependencies (the Anthropic SDK and LangGraph, used by the automatic reviews):
+
+   ```bash
+   cd ~/.claude/skills/DotaCoach && bun install
+   ```
+
+   The data tools Claude Code runs (`GetHero`, `GetMatch` and the rest) need nothing beyond Bun.
 
 3. Optional: set a STRATZ key. Get a token at stratz.com/api, then copy the example env file and paste the token in:
 
@@ -36,7 +42,13 @@ A Claude Code skill that turns Claude into a Dota 2 coach. Claude pulls live dat
 
    The tools read this `.env` from the skill folder wherever they are run from, and git ignores it. A `STRATZ_API_KEY` exported in your shell takes precedence over the file.
 
-   Without it, every tool still works on OpenDota and says so in its source line. With it, `GetHeroStats --role` uses STRATZ ranked per-position data and `GetMatchups` uses STRATZ matchups, with `--bracket` support. If a STRATZ call fails, the tool falls back to OpenDota and prints the reason.
+   For automatic post-game reviews, add an Anthropic API key (console.anthropic.com) the same way, or paste it in the dashboard:
+
+   ```
+   ANTHROPIC_API_KEY=sk-ant-...
+   ```
+
+   Without the STRATZ key, every tool still works on OpenDota and says so in its source line. With it, `GetHeroStats --role` uses STRATZ ranked per-position data and `GetMatchups` uses STRATZ matchups, with `--bracket` support. If a STRATZ call fails, the tool falls back to OpenDota and prints the reason.
 
 4. Set up your accounts and the post-game watcher in the dashboard:
 
@@ -44,7 +56,7 @@ A Claude Code skill that turns Claude into a Dota 2 coach. Claude pulls live dat
    bun run ~/.claude/skills/DotaCoach/tools/Dashboard.ts
    ```
 
-   It opens `http://127.0.0.1:3743/?t=<code>` in your browser and prints that link in the terminal. Only that link works, and the code changes every run, so other programs and users on the PC can't use the page. There you add your main account and alts (Friend ID or a profile link), write coaching notes, connect Dota 2, start the watcher, paste a STRATZ token, and read saved reviews. Everything is stored in the skill folder: accounts, notes and watcher settings in `profile.json`, the STRATZ key in `.env`; git ignores both. The page only listens on your computer.
+   It opens `http://127.0.0.1:3743/?t=<code>` in your browser and prints that link in the terminal. Only that link works, and the code changes every run, so other programs and users on the PC can't use the page. There you add your main account and alts (Friend ID or a profile link), write coaching notes, connect Dota 2, start the watcher, paste your Anthropic and STRATZ keys, and read saved reviews. Everything is stored in the skill folder: accounts, notes and watcher settings in `profile.json`, the keys in `.env`; git ignores both. The page only listens on your computer.
 
    You can skip the dashboard: tell Claude "my Dota account is <Friend ID>" and it saves it with `tools/Profile.ts`, or run that yourself:
 
@@ -79,11 +91,13 @@ Without the dashboard:
 bun run tools/Update.ts
 ```
 
-Updates only fast-forward the skill's own files. Your `profile.json`, `.env` and `reviews/` are git-ignored and never touched. If you edited the skill's files yourself, or the branch you cloned was merged and deleted on GitHub, the update stops and tells you what to do instead. After an update, start a new Claude Code session so it reads the new instructions.
+Updates fast-forward the skill's own files, then run `bun install` in case the dependencies changed. Your `profile.json`, `.env` and `reviews/` are git-ignored and never touched. If you edited the skill's files yourself, or the branch you cloned was merged and deleted on GitHub, the update stops and tells you what to do instead. After an update, start a new Claude Code session so it reads the new instructions.
 
 ## Automatic review after each game
 
-OpenDota and STRATZ have no webhooks. The instant signal comes from Dota itself: Game State Integration posts game state to a local URL, including the match id when the game ends. `tools/WatchMatches.ts` listens for that, asks OpenDota to parse the replay, then runs `claude -p` to review the match and saves the result to `reviews/<match_id>.md`. Expect the review a few minutes after the game: the trigger is instant, the OpenDota parse takes 2-10 minutes, the review about a minute.
+OpenDota and STRATZ have no webhooks. The instant signal comes from Dota itself: Game State Integration posts game state to a local URL, including the match id when the game ends. `tools/WatchMatches.ts` listens for that, asks OpenDota to parse the replay, then reviews the match with Claude and saves the result to `reviews/<match_id>.md`. Expect the review a few minutes after the game: the trigger is instant, the OpenDota parse takes 2-10 minutes, the review one to two minutes.
+
+The review is a LangGraph graph over the Claude API (`lib/coach/`): it collects the match overview, timelines and replay positions, then lets Claude call the same data tools Claude Code uses (hero kits, item builds, matchups, patch notes, other players' positions) and save map marks, and keeps the final text. It follows the rules in `workflows/MatchAnalysis.md`; the API version of those rules is `lib/coach/prompt.ts`. Each review is a few API calls billed to your `ANTHROPIC_API_KEY`. It uses `claude-opus-5-5` at `high` effort; set `DOTACOACH_MODEL` or `DOTACOACH_EFFORT` to change that. If a request is declined by Claude's safety filters, the API retries it on a fallback model in the same call (server-side fallback, beta).
 
 The dashboard (`tools/Dashboard.ts`) walks through this: it installs the config into your Dota folder, runs the watcher, shows when Dota last checked in, and lists your recent matches with their reviews. Keep it open while you play.
 
@@ -101,6 +115,83 @@ bun run tools/WatchMatches.ts
 
 Add `--poll=5` to also check OpenDota every 5 minutes, which catches games played on another PC. `--help` lists every option, including `--test=<match_id>` for a dry run and `DOTACOACH_ON_MATCH` to run your own command instead of Claude. Valve notes GSI can cost some frame rate; remove the launch option to turn it off.
 
+## Deploy to Cloudflare
+
+The dashboard and the post-game reviews can run as a Cloudflare Worker instead of on your PC, so nothing has to stay open while you play. The Claude Code skill itself (asking Claude questions in a session) still runs locally.
+
+What runs where:
+
+- **Worker** (`worker/index.ts`): the same dashboard page and API, behind a password.
+- **D1 database**: accounts, notes, watcher settings, the queue, reviews, map marks, the map picture and the API cache, in one table.
+- **Cron trigger, once a minute**: polls OpenDota for your new games (every 5 minutes by default), moves pending replay parses along, and writes at most one review per run.
+- **`/gsi`**: optional endpoint for Dota's Game State Integration.
+
+### Steps
+
+You need a Cloudflare account (the free plan works, see the limits below) and Node or Bun. Use a separate clone for deploying, not the one in `~/.claude/skills/DotaCoach`: you edit `wrangler.toml` below, and local edits stop the skill's self-update.
+
+```bash
+git clone https://github.com/seahsky/dota-coach.git dotacoach-cloud && cd dotacoach-cloud
+```
+
+```bash
+bun install
+```
+
+```bash
+npx wrangler login
+```
+
+```bash
+npx wrangler d1 create dotacoach
+```
+
+Paste the `database_id` it prints into `wrangler.toml`, then create the table:
+
+```bash
+npx wrangler d1 migrations apply dotacoach --remote
+```
+
+Set the secrets. `DASHBOARD_TOKEN` is the dashboard password: any random string of 16+ characters (for example the output of `openssl rand -hex 24`).
+
+```bash
+npx wrangler secret put DASHBOARD_TOKEN
+```
+
+```bash
+npx wrangler secret put ANTHROPIC_API_KEY
+```
+
+Optional:
+
+```bash
+npx wrangler secret put STRATZ_API_KEY
+```
+
+Deploy:
+
+```bash
+npx wrangler deploy
+```
+
+Open `https://dotacoach.<your-subdomain>.workers.dev/?t=<DASHBOARD_TOKEN>` once. The page swaps the token for a cookie, so later visits to the plain URL work for 30 days. Add your accounts, then press **Turn on** in Post-game reviews. To change the model or effort, set `DOTACOACH_MODEL` / `DOTACOACH_EFFORT` under `[vars]` in `wrangler.toml` and deploy again.
+
+For a second layer of protection in front of the password, put the Worker behind Cloudflare Access (Zero Trust, free for up to 50 users) and leave `/gsi` outside the Access policy.
+
+### Differences from the local dashboard
+
+- Keys are Worker secrets (`wrangler secret put`), not fields on the page.
+- Polling OpenDota is on by default. Games show up about 5-10 minutes after they end, then the parse wait and the review follow.
+- Dota GSI is optional: save the config from the page into your Dota folder. It points Dota at `https://<worker>/gsi` with a 10-second throttle. I have not tested whether the Dota client posts to an HTTPS address on the internet; if the "Signal from Dota" light never turns green, rely on polling.
+- No after-match command and no self-update. Update by pulling the repo and running `npx wrangler deploy`.
+- Data in D1 is separate from your local `profile.json` and `reviews/`.
+
+### Free plan limits
+
+The Workers free plan allows 100,000 requests a day, 10 ms of CPU time per request or cron run, and 50 outbound requests per run. D1's free tier allows 5 million row reads and 100,000 row writes a day. The design keeps to these: one review per cron run, the API cache keeps short-lived lookups in memory instead of D1, GSI writes at most one row a minute, and the open dashboard polls every 15 seconds.
+
+The tightest limit is CPU time during a review. Waiting on OpenDota or Claude does not count, but parsing a full match (a few hundred KB of JSON) and the review's bookkeeping do, and I measured parsing alone at about 2 ms warm, 8 ms cold, on a laptop. I could not measure a full review against Cloudflare's enforcement locally (`wrangler dev` does not enforce CPU limits). If the Worker logs show "Exceeded CPU limit" (error 1102) on cron runs or on the map view, the Workers Paid plan ($5/month, 30 s of CPU per request) removes the problem; nothing else needs to change. Claude API usage is billed separately by Anthropic either way.
+
 ## Testing
 
 From the skill directory:
@@ -115,7 +206,7 @@ This runs each tool once against the live APIs and checks the error paths (unkno
 bun test
 ```
 
-This runs the hero-name resolver tests (nicknames, typos, ambiguity). The first run fetches the hero list from OpenDota; later runs use the cache.
+This runs the hero-name resolver, profile, replay-map and argument-parser tests. The first run fetches the hero list from OpenDota; later runs use the cache.
 
 Try individual tools:
 
@@ -133,7 +224,7 @@ bun run tools/LastMatch.ts --count=5
 
 Add `--json` for structured output and `--help` to see every flag.
 
-Typecheck (needs `bun install` first):
+Typecheck (covers `lib/`, `tools/` and `worker/`):
 
 ```bash
 bun run typecheck
@@ -144,7 +235,10 @@ bun run typecheck
 ```
 SKILL.md      entry point Claude reads: when to use the skill, which tool and workflow
 tools/        one CLI per data need (ReplayMap prints map positions) (bun run tools/<Name>.ts), plus Dashboard and WatchMatches
-dashboard/    the setup page served by tools/Dashboard.ts
+dashboard/    the setup page served by tools/Dashboard.ts and by the Cloudflare Worker
+lib/coach/    the automatic review: LangGraph graph over the Claude API, its prompt and tools
+worker/       Cloudflare Worker: dashboard API, /gsi, the cron watcher, D1 storage and migrations
+wrangler.toml Cloudflare deploy config
 workflows/    playbooks for each request type (patch, hero, meta, counter, draft, match, auto review)
 lib/          API client, file cache, hero-name resolver, item names, STRATZ client
 tests/        resolver tests and the live smoke test
@@ -164,7 +258,10 @@ Environment variables (shell or `.env`):
 | `DOTACOACH_NO_CACHE=1` | Skip the cache for this run. |
 | `DOTACOACH_CACHE_DIR` | Use a different cache directory. |
 | `DOTACOACH_PROFILE` | Use a different profile file instead of `profile.json` in the skill folder. |
-| `DOTACOACH_ON_MATCH` | Command the watcher runs after a game instead of `claude -p`. A command saved in the dashboard (stored in `profile.json`) takes precedence. |
+| `ANTHROPIC_API_KEY` | Enables automatic reviews (watcher and dashboard). |
+| `DOTACOACH_MODEL` | Model for reviews (default `claude-opus-5-5`). |
+| `DOTACOACH_EFFORT` | Effort for reviews: `low`, `medium`, `high` (default), `xhigh` or `max`. |
+| `DOTACOACH_ON_MATCH` | Command the watcher runs after a game instead of the Claude review. A command saved in the dashboard (stored in `profile.json`) takes precedence. |
 | `DOTACOACH_DEBUG=1` | Print stack traces on unexpected errors. |
 
 Any of these can go in the skill folder's `.env` file instead of your shell.

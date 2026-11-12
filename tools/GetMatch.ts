@@ -94,8 +94,8 @@ function playerName(p: Player, humans: number | undefined): string {
 
 const prettyUnit = (u: string) => u.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
-async function main_(): Promise<void> {
-  const args = parseCli(USAGE, { booleans: ["draft"] });
+export async function run(argv: string[]): Promise<string> {
+  const args = parseCli(USAGE, { booleans: ["draft"] }, argv);
   const id = args.positionals[0];
   if (!id) throw new DotaError(`Missing match id.\nUsage: ${USAGE}`);
   if (!/^\d+$/.test(id) || Number(id) <= 0) throw new DotaError(`Match id must be a positive number (got "${id}").`);
@@ -194,7 +194,7 @@ async function main_(): Promise<void> {
 
   if (args.flags.draft) result.draft = await buildDraft(m, players, radiantName, direName);
 
-  output(args, result, () => render(result));
+  return output(args, result, () => render(result));
 }
 
 async function buildDraft(
@@ -319,4 +319,4 @@ function render(r: Result): string {
   return out.join("\n");
 }
 
-main(main_);
+if (import.meta.main) await main(() => run(Bun.argv.slice(2)));

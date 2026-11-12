@@ -9,7 +9,7 @@ Set up automatic post-game reviews: the user plays, the game ends, and a review 
 ## How it works (tell the user this briefly)
 Neither OpenDota nor STRATZ offers webhooks, and Valve's Web API has none either. The push signal comes from the Dota 2 client: **Game State Integration (GSI)**. With the `-gamestateintegration` launch option and a config file in the game folder, Dota POSTs game state to a local URL. `tools/WatchMatches.ts` listens on `127.0.0.1:3742`. When the state reaches post-game for one of the saved accounts, it:
 1. asks OpenDota to parse the replay (`POST /request/{match_id}`) and waits until the parse finishes (usually 2-10 minutes, up to `--wait`, default 15);
-2. runs `claude -p` in the skill folder to review the match with MatchAnalysis, focused on the user's player;
+2. reviews the match with Claude through the Anthropic API (a LangGraph agent in `lib/coach/` that follows the MatchAnalysis rules), focused on the user's player;
 3. prints the review in the watcher window and saves it to `reviews/<match_id>.md`.
 
 The slow part is OpenDota parsing the replay, not the trigger. GSI only reports the local player, so it never fires for spectated games or other people.
@@ -40,8 +40,9 @@ It installs the GSI config, shows a "Signal from Dota" light that turns green on
 
 ## Options worth mentioning
 - `--no-review`: only request parses, so data is ready when they ask Claude later.
-- An after-match command (dashboard section 5, or `DOTACOACH_ON_MATCH` in the shell or `.env`): run their own command (a Discord webhook, a notification) instead of `claude -p`. It gets `DOTACOACH_MATCH_ID`, `DOTACOACH_ACCOUNT_ID`, `DOTACOACH_HERO`, `DOTACOACH_REVIEW_FILE` in the environment.
-- Each review is a full Claude Code run and uses the user's Claude usage like any other prompt.
+- An after-match command (dashboard section 5, or `DOTACOACH_ON_MATCH` in the shell or `.env`): run their own command (a Discord webhook, a notification) instead of the Claude review. It gets `DOTACOACH_MATCH_ID`, `DOTACOACH_ACCOUNT_ID`, `DOTACOACH_HERO`, `DOTACOACH_REVIEW_FILE` in the environment.
+- Reviews need an Anthropic API key (dashboard section 5, or `ANTHROPIC_API_KEY` in `.env`) and `bun install` run once in the skill folder. Each review is a few Claude API calls billed to that key; `DOTACOACH_MODEL` and `DOTACOACH_EFFORT` change the model (default `claude-opus-5-5`) and effort (default `high`).
+- Hosted option: the dashboard and watcher can run on Cloudflare instead of the user's PC (README, "Deploy to Cloudflare"). Then nothing needs to stay open while they play; polling finds games and a cron writes the reviews.
 
 ## Pitfalls
 - Practice lobbies, bot games and arcade games never reach OpenDota; the watcher gives up after `--wait` and logs it.

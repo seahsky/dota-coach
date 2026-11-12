@@ -32,6 +32,7 @@ The user's accounts are saved in `profile.json` next to this file: one main acco
 | `GetMatchups.ts "<hero>" [--vs=X] [--min-games=N] [--top=N]` | Best/worst matchups with delta, margin and sample size. | OpenDota pro matchups; STRATZ when keyed |
 | `GetItemBuilds.ts "<hero>" [--top=N] [--all]` | Popular items by phase: start, early, mid, late. | OpenDota itemPopularity |
 | `GetMatch.ts <match_id> [--draft]` | Match summary, players, items, gold/XP swings; draft order with `--draft`. | OpenDota /matches |
+| `MatchTimelines.ts <match_id>` | Objectives, teamfights, 10-minute lane numbers, big-item purchase times, OpenDota percentiles (parsed matches). | OpenDota /matches (cached) |
 | `ReplayMap.ts <match_id> [--account=X] [--hero=X] [--save-markers=JSON]` | Map positions from a parsed match: deaths, wards on both sides (lifetime, who cleared them), lane position, fight spots. Saves coach map marks the dashboard draws. | OpenDota /matches (parsed) |
 | `Profile.ts [show\|set-main\|add-alt\|remove\|note] [--label=X]` | The user's main and alt accounts, current rank, saved notes. | profile.json + OpenDota /players |
 | `LastMatch.ts [--account=X] [--count=N] [--parse] [--wait=MIN]` | Newest matches across main and alts; `--parse` asks OpenDota to parse the newest one. | OpenDota /players/{id}/matches |

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { platform, tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { join } from "node:path";
@@ -6,8 +6,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { intFlag, parseCli } from "../lib/cli.ts";
 import { ENV_FILE, fromEnvironment, setEnvValue, setInEnvironment } from "../lib/env.ts";
 import { DotaError, main } from "../lib/errors.ts";
-import { heroName } from "../lib/heroes.ts";
-import { getPlayer, getPlayerMatches, playerWon, rankName } from "../lib/players.ts";
+import { accountsWithRank as ranked, maskKey, recentMatches, verifyAccount } from "../lib/dashboard.ts";
 import {
   PROFILE_FILE,
   addAlt,
@@ -21,17 +20,18 @@ import {
 } from "../lib/profile.ts";
 import { DEFAULT_BOUNDS, findMapImage, readMapImage, removeMapImage, saveMapImage, validateBounds } from "../lib/mapimage.ts";
 import { buildMapData } from "../lib/replaymap.ts";
+import { listReviews, readReview } from "../lib/reviews.ts";
 import { hasStratzKey, stratzQuery } from "../lib/stratz.ts";
 import { type UpdateStatus, applyUpdate, checkForUpdate } from "../lib/update.ts";
 import {
   DEFAULT_GSI_PORT,
-  REVIEWS_DIR,
   SKILL_DIR,
   type Finished,
   Watcher,
   ensureGsiToken,
   findDotaDir,
   gsiConfig,
+  hasAnthropicKey,
   installGsi,
   isDotaDir,
   readInstalledGsi,
@@ -90,24 +90,6 @@ class HttpError extends Error {
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
-
-function maskKey(key: string | undefined): string | null {
-  const k = key?.trim();
-  if (!k) return null;
-  return k.length <= 8 ? "set" : `${k.slice(0, 4)}...${k.slice(-4)}`;
-}
-
-function listReviews(): { matchId: number; savedAt: number }[] {
-  try {
-    return readdirSync(REVIEWS_DIR)
-      .map((f) => f.match(/^(\d+)\.md$/)?.[1])
-      .filter((id): id is string => Boolean(id))
-      .map((id) => ({ matchId: Number(id), savedAt: statSync(join(REVIEWS_DIR, `${id}.md`)).mtimeMs }))
-      .sort((a, b) => b.savedAt - a.savedAt);
-  } catch {
-    return [];
-  }
-}
 
 function openBrowser(url: string): void {
   const cmd =
@@ -191,7 +173,7 @@ await main(async () => {
 
   // After an update from the page, the new process keeps the old token so the open tab keeps working.
   const inherited = process.env.DOTACOACH_SESSION_TOKEN;
-  delete process.env.DOTACOACH_SESSION_TOKEN; // not passed on to claude -p or the after-match command
+  delete process.env.DOTACOACH_SESSION_TOKEN; // not passed on to the after-match command
   const sessionToken = inherited && /^[0-9a-f]{48}$/.test(inherited) ? inherited : randomBytes(24).toString("hex");
   const tokenBuf = Buffer.from(sessionToken);
   const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
@@ -203,37 +185,27 @@ await main(async () => {
 
   // ---------- API handlers ----------
 
-  async function accountsWithRank() {
-    return Promise.all(
-      profileAccounts(loadProfile()).map(async (a) => {
-        try {
-          const p = await getPlayer(a.account_id);
-          return { ...a, persona: p.profile?.personaname ?? a.persona ?? null, rank: rankName(p.rank_tier, p.leaderboard_rank), error: null };
-        } catch (err) {
-          return { ...a, persona: a.persona ?? null, rank: null, error: err instanceof Error ? err.message : String(err) };
-        }
-      }),
-    );
-  }
+  const accountsWithRank = () => ranked(profileAccounts(loadProfile()));
 
-  function state() {
+  async function state() {
     const profile = loadProfile();
     const opts = watcherOptions();
     const dotaDir = profile.dota_dir ?? findDotaDir();
     const installed = dotaDir && isDotaDir(dotaDir) ? readInstalledGsi(dotaDir) : null;
     return {
+      mode: "local",
       skillDir: SKILL_DIR,
       profileFile: PROFILE_FILE,
       envFile: ENV_FILE,
       accounts: profileAccounts(profile),
       notes: profile.notes ?? "",
-      stratz: { set: hasStratzKey(), masked: maskKey(process.env.STRATZ_API_KEY), fromEnvironment: fromEnvironment("STRATZ_API_KEY") },
+      stratz: { set: hasStratzKey(), masked: maskKey(process.env.STRATZ_API_KEY), fromEnvironment: fromEnvironment("STRATZ_API_KEY"), editable: true },
+      anthropic: { set: hasAnthropicKey(), masked: maskKey(process.env.ANTHROPIC_API_KEY), fromEnvironment: fromEnvironment("ANTHROPIC_API_KEY"), editable: true },
       onMatch: profile.watch?.onMatch ?? "",
       onMatchEffective: onMatchCommand(profile),
       onMatchFromEnv: !profile.watch?.onMatch && Boolean(process.env.DOTACOACH_ON_MATCH?.trim()),
       dashboardPort: port,
       pid: process.pid,
-      claudeOnPath: Boolean(Bun.which("claude")),
       gsi: {
         dotaDir: dotaDir ?? null,
         dotaDirValid: Boolean(dotaDir && isDotaDir(dotaDir)),
@@ -244,50 +216,9 @@ await main(async () => {
       watchOptions: opts,
       update: { auto: profile.update?.auto !== false, status: updateStatus, checking: updateChecking },
       watcher: watcher.status(),
-      reviews: listReviews(),
+      reviews: await listReviews(),
       mapImage: { present: Boolean(findMapImage()), bounds: profile.map_bounds ?? DEFAULT_BOUNDS, defaults: DEFAULT_BOUNDS },
     };
-  }
-
-  async function verifyAccount(input: string, label?: string) {
-    const id = parseAccountId(input);
-    const p = await getPlayer(id);
-    return { account_id: id, ...(label ? { label } : {}), persona: p.profile?.personaname ?? undefined };
-  }
-
-  async function recentMatches(count: number) {
-    const accounts = profileAccounts(loadProfile());
-    const have = new Set(listReviews().map((r) => r.matchId));
-    const per = await Promise.all(
-      accounts.map(async (a) => {
-        try {
-          return { a, matches: await getPlayerMatches(a.account_id, count), error: null };
-        } catch (err) {
-          return { a, matches: [], error: err instanceof Error ? err.message : String(err) };
-        }
-      }),
-    );
-    const rows = [];
-    for (const { a, matches } of per) {
-      for (const m of matches) {
-        rows.push({
-          matchId: m.match_id,
-          accountId: a.account_id,
-          account: a.label ?? a.persona ?? String(a.account_id),
-          role: a.role,
-          hero: await heroName(m.hero_id).catch(() => `Hero ${m.hero_id}`),
-          won: playerWon(m),
-          kda: `${m.kills}/${m.deaths}/${m.assists}`,
-          startTime: m.start_time,
-          endTime: m.start_time + m.duration,
-          duration: m.duration,
-          parsed: Boolean(m.version),
-          hasReview: have.has(m.match_id),
-        });
-      }
-    }
-    rows.sort((x, y) => y.startTime - x.startTime);
-    return { matches: rows.slice(0, count), errors: per.filter((p) => p.error).map((p) => `${p.a.account_id}: ${p.error}`) };
   }
 
   async function handleApi(req: Request, url: URL): Promise<Response> {
@@ -295,7 +226,7 @@ await main(async () => {
     const method = req.method;
     const body = method === "POST" ? ((await req.json().catch(() => ({}))) as Record<string, unknown>) : {};
 
-    if (method === "GET" && path === "/api/state") return json(state());
+    if (method === "GET" && path === "/api/state") return json(await state());
     if (method === "GET" && path === "/api/accounts") return json({ accounts: await accountsWithRank() });
 
     if (method === "POST" && path === "/api/accounts") {
@@ -344,6 +275,18 @@ await main(async () => {
       return json({ message: (key ? "STRATZ key saved to .env." : "STRATZ key removed from .env.") + note });
     }
 
+    if (method === "POST" && path === "/api/anthropic") {
+      const key = body.key === null ? null : str(body.key, "key", 400).trim();
+      if (key && !/^sk-ant-[\x21-\x7e]+$/.test(key)) throw new HttpError(400, "That does not look like an Anthropic API key (it starts with sk-ant-).");
+      try {
+        setEnvValue("ANTHROPIC_API_KEY", key || null);
+      } catch (err) {
+        throw new HttpError(400, err instanceof Error ? err.message : String(err));
+      }
+      const note = setInEnvironment("ANTHROPIC_API_KEY") ? " ANTHROPIC_API_KEY is also set in your shell or system environment, which wins after a restart." : "";
+      return json({ message: (key ? "Anthropic API key saved to .env." : "Anthropic API key removed from .env.") + note });
+    }
+
     if (method === "POST" && path === "/api/stratz/test") {
       if (!hasStratzKey()) throw new HttpError(400, "No STRATZ key saved.");
       try {
@@ -367,7 +310,7 @@ await main(async () => {
           ? "After-match command saved."
           : env
             ? "Command cleared here, but DOTACOACH_ON_MATCH is still set in your environment or .env, so that command runs."
-            : "Command cleared; reviews use claude -p.",
+            : "Command cleared; reviews use Claude.",
       });
     }
 
@@ -430,7 +373,7 @@ await main(async () => {
 
     if (method === "GET" && path === "/api/matches") {
       const count = int(url.searchParams.get("count") ?? 10, "count", 1, 20);
-      return json(await recentMatches(count));
+      return json(await recentMatches(profileAccounts(loadProfile()), count, new Set((await listReviews()).map((r) => r.matchId))));
     }
 
     if (method === "POST" && path === "/api/review") {
@@ -484,11 +427,9 @@ await main(async () => {
     if (method === "GET" && path === "/api/reviews") return json({ reviews: listReviews() });
     const rev = path.match(/^\/api\/reviews\/(\d{1,20})$/);
     if (method === "GET" && rev) {
-      try {
-        return json({ matchId: Number(rev[1]), markdown: readFileSync(join(REVIEWS_DIR, `${rev[1]}.md`), "utf8") });
-      } catch {
-        throw new HttpError(404, `No saved review for match ${rev[1]}.`);
-      }
+      const markdown = await readReview(rev[1]!);
+      if (markdown === null) throw new HttpError(404, `No saved review for match ${rev[1]}.`);
+      return json({ matchId: Number(rev[1]), markdown });
     }
 
     if (method === "GET" && path === "/api/map-image") {

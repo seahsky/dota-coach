@@ -717,44 +717,44 @@ async function lastHeroChange(heroId: number, version: string): Promise<string |
 
 const SECTIONS: Section[] = ["general", "heroes", "items", "neutral", "creeps"];
 
-if (import.meta.main) {
-  await main(async () => {
-    const args = parseCli(USAGE, { strings: ["version", "hero", "item", "section"], booleans: ["full"] });
-    const versionArg = (args.flags.version as string | undefined) ?? args.positionals[0];
-    const section = args.flags.section as string | undefined;
-    if (section && !SECTIONS.includes(section as Section)) {
-      throw new DotaError(`--section must be one of ${SECTIONS.join(", ")} (got "${section}").`);
+export async function run(argv: string[]): Promise<string> {
+  const args = parseCli(USAGE, { strings: ["version", "hero", "item", "section"], booleans: ["full"] }, argv);
+  const versionArg = (args.flags.version as string | undefined) ?? args.positionals[0];
+  const section = args.flags.section as string | undefined;
+  if (section && !SECTIONS.includes(section as Section)) {
+    throw new DotaError(`--section must be one of ${SECTIONS.join(", ")} (got "${section}").`);
+  }
+  const heroArg = args.flags.hero as string | undefined;
+  const itemArg = args.flags.item as string | undefined;
+  const hero = heroArg ? await resolveHero(heroArg) : null;
+
+  const patch = applyFilters(await loadPatch(versionArg), hero, itemArg);
+  const lastChanged = hero && !patch.heroes.length && !patch.fallbackReason ? await lastHeroChange(hero.id, patch.version) : undefined;
+
+  if (itemArg && !patch.items.length && !patch.neutralItems.length) {
+    const known = await valveNames("/itemlist").catch(() => null);
+    const q = norm(itemArg);
+    if (known && ![...known.values()].some((n) => norm(n).includes(q))) {
+      throw new NotFoundError(`Unknown item "${itemArg}".`);
     }
-    const heroArg = args.flags.hero as string | undefined;
-    const itemArg = args.flags.item as string | undefined;
-    const hero = heroArg ? await resolveHero(heroArg) : null;
+  }
 
-    const patch = applyFilters(await loadPatch(versionArg), hero, itemArg);
-    const lastChanged = hero && !patch.heroes.length && !patch.fallbackReason ? await lastHeroChange(hero.id, patch.version) : undefined;
-
-    if (itemArg && !patch.items.length && !patch.neutralItems.length) {
-      const known = await valveNames("/itemlist").catch(() => null);
-      const q = norm(itemArg);
-      if (known && ![...known.values()].some((n) => norm(n).includes(q))) {
-        throw new NotFoundError(`Unknown item "${itemArg}".`);
-      }
-    }
-
-    const data = {
-      ...patch,
-      ...(section ? { section } : {}),
-      ...(lastChanged !== undefined ? { heroLastChangedIn: lastChanged } : {}),
-      summary: summary(patch),
-    };
-    output(args, data, () =>
-      render(patch, {
-        full: Boolean(args.flags.full),
-        section: section as Section | undefined,
-        filtered: Boolean(hero || itemArg),
-        heroLabel: hero?.name,
-        lastChanged,
-        itemLabel: itemArg,
-      }),
-    );
-  });
+  const data = {
+    ...patch,
+    ...(section ? { section } : {}),
+    ...(lastChanged !== undefined ? { heroLastChangedIn: lastChanged } : {}),
+    summary: summary(patch),
+  };
+  return output(args, data, () =>
+    render(patch, {
+      full: Boolean(args.flags.full),
+      section: section as Section | undefined,
+      filtered: Boolean(hero || itemArg),
+      heroLabel: hero?.name,
+      lastChanged,
+      itemLabel: itemArg,
+    }),
+  );
 }
+
+if (import.meta.main) await main(() => run(Bun.argv.slice(2)));

@@ -141,8 +141,8 @@ function parseBracket(v: unknown): Bracket | null {
   throw new DotaError(`--bracket must be one of ${BRACKETS.map((b) => b.toLowerCase()).join(", ")}, all, or a single rank such as divine (got "${v}").`);
 }
 
-await main(async () => {
-  const args = parseCli(USAGE, { strings: ["top", "min-games", "vs", "bracket"] });
+export async function run(argv: string[]): Promise<string> {
+  const args = parseCli(USAGE, { strings: ["top", "min-games", "vs", "bracket"] }, argv);
   const input = args.positionals.join(" ").trim();
   if (!input) throw new DotaError(`No hero given.\nUsage: ${USAGE}`);
   const top = intFlag(args.flags.top, "top", 8, 1, 130);
@@ -233,7 +233,7 @@ await main(async () => {
     vsMissing,
   };
 
-  output(args, result, () => {
+  return output(args, result, () => {
     const out: string[] = [`# ${hero.name} matchups`, ""];
     if (fallbackReason) out.push(`Note: ${fallbackReason}.`, "");
     const sampleSize = Number.isFinite(heroGames)
@@ -281,4 +281,6 @@ await main(async () => {
     out.push(sourceLine(source, !hasStratzKey() ? "STRATZ_API_KEY unset" : fallbackReason ? "STRATZ fallback" : undefined));
     return out.join("\n");
   });
-});
+}
+
+if (import.meta.main) await main(() => run(Bun.argv.slice(2)));

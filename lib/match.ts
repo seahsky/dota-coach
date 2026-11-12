@@ -34,7 +34,7 @@ export interface Match extends Omit<OdMatch, "players"> {
 /** Fetch a match; parsed matches are cached forever, unparsed ones for an hour. */
 export async function fetchMatch(id: string): Promise<{ match: Match; cache: string }> {
   const url = `${OPENDOTA}/matches/${id}`;
-  const hit = cacheGet<Match>(url, TTL.match);
+  const hit = await cacheGet<Match>(url, TTL.match);
   if (hit) {
     const age = Date.now() - hit.fetchedAt;
     if (hit.data.version != null) return { match: hit.data, cache: "cached (parsed matches are kept forever)" };
@@ -62,6 +62,6 @@ export async function fetchMatch(id: string): Promise<{ match: Match; cache: str
     }
     throw err;
   }
-  cacheSet(url, match);
+  await cacheSet(url, match);
   return { match, cache: match.version != null ? "fetched, cached forever (parsed)" : "fetched, cached 1h (unparsed)" };
 }

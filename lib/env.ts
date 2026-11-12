@@ -6,7 +6,9 @@ import { join } from "node:path";
  * current directory, and Claude may run the tools from anywhere. Variables
  * already set in the environment win over the file.
  */
-export const ENV_FILE = join(import.meta.dir, "..", ".env");
+// Only Bun has a skill folder on disk; in the Cloudflare Worker settings come from bindings and secrets.
+const IS_BUN = typeof Bun !== "undefined";
+export const ENV_FILE = IS_BUN ? join(import.meta.dir, "..", ".env") : "";
 
 function parseFile(): Map<string, string> {
   const vars = new Map<string, string>();
@@ -39,6 +41,7 @@ function parseFile(): Map<string, string> {
 const INHERITED = new Map<string, string>();
 
 function load(): void {
+  if (!IS_BUN) return;
   const file = parseFile();
   for (const [name, value] of file) {
     const cur = process.env[name];
@@ -46,7 +49,7 @@ function load(): void {
     // A file value with $ is expanded by Bun's loader, so a mismatch there proves nothing.
     else if (cur !== value && !value.includes("$")) INHERITED.set(name, cur);
   }
-  for (const name of ["STRATZ_API_KEY", "DOTACOACH_ON_MATCH"]) {
+  for (const name of ["STRATZ_API_KEY", "ANTHROPIC_API_KEY", "DOTACOACH_ON_MATCH"]) {
     const cur = process.env[name];
     if (cur !== undefined && !file.has(name)) INHERITED.set(name, cur);
   }

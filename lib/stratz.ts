@@ -26,7 +26,7 @@ export async function stratzQuery<T>(
   if (!key) return null;
 
   const cacheKey = `stratz:${query}:${JSON.stringify(variables)}`;
-  const hit = cacheGet<T>(cacheKey, ttlMs);
+  const hit = await cacheGet<T>(cacheKey, ttlMs);
   if (hit) return hit.data;
 
   let res: Response;
@@ -56,6 +56,6 @@ export async function stratzQuery<T>(
   }
   if (body.errors?.length) throw new StratzError(`STRATZ query error: ${body.errors[0]!.message}`);
   if (!body.data) throw new StratzError("STRATZ returned no data");
-  cacheSet(cacheKey, body.data);
+  await cacheSet(cacheKey, body.data);
   return body.data;
 }

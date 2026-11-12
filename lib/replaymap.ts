@@ -1,9 +1,7 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { DotaError } from "./errors.ts";
 import { heroMap } from "./heroes.ts";
 import { type Match, fetchMatch } from "./match.ts";
-import { REVIEWS_DIR } from "./watcher.ts";
+import { store } from "./store.ts";
 
 /**
  * Positional data from a parsed OpenDota match, for the map view in the dashboard
@@ -111,8 +109,6 @@ interface ParsedFight {
 }
 
 const LANE: Record<number, string> = { 1: "safe", 2: "mid", 3: "off", 4: "jungle" };
-
-export const MARKERS_FILE = (matchId: number | string) => join(REVIEWS_DIR, `${matchId}.map.json`);
 
 /**
  * Coarse map zone for a cell: base, mid lane, river or half, plus which side of the mid lane.
@@ -222,12 +218,12 @@ export async function buildMapData(matchId: string, focus: { accounts?: number[]
     deaths: deaths.sort((a, b) => a.time - b.time),
     fights,
     lanePos: m.players.map((p) => cells((p as unknown as ParsedPlayer).lane_pos)),
-    markers: loadMarkers(m.match_id),
+    markers: await loadMarkers(m.match_id),
     cache,
   };
 }
 
-// ---------- coach markers (reviews/<id>.map.json) ----------
+// ---------- coach markers (reviews/<id>.map.json locally, KV in the Worker) ----------
 
 const KINDS: MarkerKind[] = ["ward", "sentry", "position", "avoid"];
 
@@ -264,19 +260,15 @@ export function validateMarkers(raw: unknown): CoachMarker[] {
   });
 }
 
-export function loadMarkers(matchId: number | string): CoachMarker[] {
+export async function loadMarkers(matchId: number | string): Promise<CoachMarker[]> {
   try {
-    return validateMarkers(JSON.parse(readFileSync(MARKERS_FILE(matchId), "utf8")));
+    const raw = await (await store()).get(`markers:${matchId}`);
+    return raw ? validateMarkers(JSON.parse(raw)) : [];
   } catch {
     return [];
   }
 }
 
-export function saveMarkers(matchId: number | string, markers: CoachMarker[]): string {
-  mkdirSync(REVIEWS_DIR, { recursive: true });
-  const file = MARKERS_FILE(matchId);
-  const tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, JSON.stringify({ markers }, null, 2) + "\n");
-  renameSync(tmp, file);
-  return file;
+export async function saveMarkers(matchId: number | string, markers: CoachMarker[]): Promise<void> {
+  await (await store()).put(`markers:${matchId}`, JSON.stringify({ markers }, null, 2) + "\n");
 }

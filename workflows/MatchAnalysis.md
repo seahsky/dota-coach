@@ -21,28 +21,7 @@ Run from the skill directory. The cache is on; never set DOTACOACH_NO_CACHE. On 
 0. If `reviews/<id>.md` exists, the post-game watcher already reviewed this match. Read it, and answer follow-up questions from it plus the tools below instead of redoing the whole review.
 
 1. `bun run tools/GetMatch.ts <id> --draft` for the overview, advantage table, player rows and draft. Add `--json` if you need exact fields (`parsed`, `advantage[]`, `players[].position_est`, `lane_role`, `units[]` for Spirit Bear items).
-2. If the header says `Replay parsed.`, pull the timelines GetMatch does not print (objectives, teamfights, 10-minute lane numbers, first purchase times, OpenDota percentiles). This reads the cached match only, no extra request:
-```
-ID=<id> bun -e '
-import { cacheGetStale } from "./lib/cache.ts"; import { OPENDOTA } from "./lib/http.ts";
-import { heroName } from "./lib/heroes.ts"; import { itemMap } from "./lib/items.ts";
-const m = cacheGetStale(`${OPENDOTA}/matches/${process.env.ID}`)?.data;
-if (!m?.version) { console.log("No cached parsed match. Run GetMatch first; unparsed matches have no timelines."); process.exit(1); }
-const mm = s => `${Math.floor(s/60)}:${String(Math.abs(s%60)).padStart(2,"0")}`;
-const items = new Map([...(await itemMap()).values()].map(i => [i.key, i]));
-console.log("## Objectives (team 2 = Radiant, 3 = Dire; badguys = Dire building)");
-for (const o of m.objectives ?? []) console.log(mm(o.time), o.type, o.key ?? "", o.team ?? "", o.unit ?? "");
-console.log("## Teamfights (start-end, deaths)");
-for (const t of m.teamfights ?? []) console.log(`${mm(t.start)}-${mm(t.end)} deaths ${t.deaths}`);
-console.log("## Players at 10:00 and item timings (cost >= 1000)");
-for (const p of m.players) {
-  const at = (a, i) => a?.[Math.min(i, a.length - 1)];
-  const big = Object.entries(p.first_purchase_time ?? {}).filter(([k]) => (items.get(k)?.cost ?? 0) >= 1000).sort((a, b) => a[1] - b[1]).map(([k, t]) => `${items.get(k).name} ${mm(t)}`);
-  const b = p.benchmarks ?? {}; const pc = k => b[k]?.pct == null ? "?" : Math.round(b[k].pct * 100);
-  console.log(`${p.isRadiant ? "R" : "D"} ${await heroName(p.hero_id)} pos ${p.position_est ?? "?"} lane ${p.lane_role ?? "?"} | 10min gold ${at(p.gold_t,10)} lh ${at(p.lh_t,10)} dn ${at(p.dn_t,10)} xp ${at(p.xp_t,10)} | deaths before 10:00 ${(p.deaths_log ?? []).filter(d => d.time < 600).length} | pctile gpm ${pc("gold_per_min")} lh/min ${pc("last_hits_per_min")} deaths ${pc("deaths_per_min")}`);
-  console.log("   " + (big.join(", ") || "no purchase log"));
-}'
-```
+2. If the header says `Replay parsed.`, `bun run tools/MatchTimelines.ts <id>` for the timelines GetMatch does not print: objectives, teamfights, each player's 10-minute numbers (gold, LH/DN, XP, deaths before 10:00), purchase times of items costing 1000+ and OpenDota percentiles. Reads the cached match, no extra request.
 3. If parsed: `bun run tools/ReplayMap.ts <id>` (add `--account=<id>` or `--hero="<hero>"` if the focus player is not on a saved account). It prints the focus player's deaths with map spots and the enemy observers that were up nearby, their wards and how long they lasted, early-game lane position against the lane opponent, observer spots that lasted or were cleared early on both sides, enemy observers in their half nobody cleared, and teamfight locations. Reads the cached match; no extra request.
 4. `bun run tools/GetItemBuilds.ts "<focus hero>"` for what that hero usually buys and in which phase. Run it for the enemy core too if their item caused the loss.
 5. `bun run tools/GetMatchups.ts "<focus hero>" --vs="<enemy>"` for the 1-2 lane opponents and the enemy core that dominated. Use `--top=8` (default) only if the draft itself is the question.
@@ -56,11 +35,11 @@ GetMatch prints `Replay not parsed; missing ...` and a link. You still have resu
 
 ## Reading the outputs
 - **Advantage table**: Radiant minus Dire, one sample per minute; GetMatch shows 10/20/30 and the last full minute. Gold and XP can diverge; XP lead with a small gold lead often means the lead came from kills and levels, not farm.
-- **Objectives** (step 2): `building_kill` keys say whose building (`badguys` = Dire, `goodguys` = Radiant) and tier (`tower1`..`tower4`, `range_rax`/`melee_rax`, `fort`). `CHAT_MESSAGE_ROSHAN_KILL` and `CHAT_MESSAGE_AEGIS` carry the team (2 Radiant, 3 Dire). `CHAT_MESSAGE_COURIER_LOST` `team` is the side that lost the courier. Other types: report as printed, do not guess their meaning.
+- **Objectives** (MatchTimelines): `building_kill` keys say whose building (`badguys` = Dire, `goodguys` = Radiant) and tier (`tower1`..`tower4`, `range_rax`/`melee_rax`, `fort`). `CHAT_MESSAGE_ROSHAN_KILL` and `CHAT_MESSAGE_AEGIS` carry the team (2 Radiant, 3 Dire). `CHAT_MESSAGE_COURIER_LOST` `team` is the side that lost the courier. Other types: report as printed, do not guess their meaning.
 - **Role column**: `pos N` is OpenDota's estimate from minutes 10-12 farm, lane and early wards. Lane label is relative to the team: one team's `safe` (1) shares a lane with the other team's `off` (3); mids (2) face each other.
 - **10-minute numbers**: compare a player with their direct lane opponent of the same role (pos 1 vs enemy pos 3, mid vs mid). Ignore OpenDota's `lane_efficiency_pct`: it divides by a fixed creep-gold constant from patch 6.84 (odota/core compute.ts).
 - **Percentiles**: `pctile` is OpenDota `benchmarks.pct`, the share of that hero's recent recorded games at or below this value (for deaths it is inverted, so higher means fewer deaths). It is not bracket-matched. Use it for "farm was low for this hero", not as a grade.
-- **Item timings**: first purchase time of each item costing 1000+, including components. A finished item appears at the time its last part was bought.
+- **Item timings** (MatchTimelines): first purchase time of each item costing 1000+, including components. A finished item appears at the time its last part was bought.
 - **GetItemBuilds**: the hero's 100 most recent parsed league matches. Phases are OpenDota's windows (start, 0-10, 10-25, 25+ min, with cost floors). It gives what is bought in each phase, not average minute timings. Pro builds may not fit a pub game; say so.
 - **GetMatchups**: the focus hero's winrate in pro matches over 365 days (if the source line names STRATZ, its bracket data). Delta inside the +/- margin is noise. It cannot show whether the matchup is decided in lane.
 

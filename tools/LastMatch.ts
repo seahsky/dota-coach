@@ -107,7 +107,7 @@ await main(async () => {
     }
   }
 
-  output(args, { latest, matches: shown, parse }, () =>
+  return output(args, { latest, matches: shown, parse }, () =>
     [
       `Latest: match ${latest.match_id} on ${latest.account} (${latest.role}), ${latest.hero}, ${latest.won ? "won" : "lost"} ${latest.kda}, ended ${ago(latest.ended_ago_min)}, ${latest.parsed ? "parsed" : "not parsed"}.`,
       parse ? `Parse request: ${parse.result}.` : "",

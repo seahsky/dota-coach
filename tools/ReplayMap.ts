@@ -1,11 +1,10 @@
 import { duration, output, parseCli, sourceLine, table } from "../lib/cli.ts";
 import { DotaError, main } from "../lib/errors.ts";
 import { resolveHero } from "../lib/heroes.ts";
-import { loadProfile, parseAccountId, profileAccounts } from "../lib/profile.ts";
+import { parseAccountId } from "../lib/profile.ts";
 import {
   type MapData,
   type MapWard,
-  MARKERS_FILE,
   buildMapData,
   saveMarkers,
   validateMarkers,
@@ -21,7 +20,7 @@ same data on a map.
 The focus player is the first one on a saved account (or --account), else --hero.
 
 --save-markers='[{"kind":"ward","x":120,"y":140,"from":10,"to":20,"label":"..."}]' saves coach
-markers for the dashboard map to reviews/<match_id>.map.json (replacing earlier ones). kind is
+markers for the dashboard map (reviews/<match_id>.map.json; replacing earlier ones). kind is
 ward, sentry, position or avoid; x/y are map cells as printed here; from/to are optional minutes.
 --save-markers='[]' clears them.`;
 
@@ -164,8 +163,9 @@ function render(d: MapData): string {
   return out.join("\n");
 }
 
-async function main_(): Promise<void> {
-  const args = parseCli(USAGE, { strings: ["account", "hero", "save-markers"] });
+/** `accounts`: the user's saved account ids (main first); the focus player is the first one in the match. */
+export async function run(argv: string[], ctx: { accounts: () => Promise<number[]> }): Promise<string> {
+  const args = parseCli(USAGE, { strings: ["account", "hero", "save-markers"] }, argv);
   const id = args.positionals[0];
   if (!id || args.positionals.length > 1) throw new DotaError(`Expected one match id.\nUsage: ${USAGE}`);
   if (!/^\d{1,12}$/.test(id) || Number(id) <= 0) throw new DotaError(`Match id must be a positive number (got "${id}").`);
@@ -179,18 +179,20 @@ async function main_(): Promise<void> {
       throw new DotaError("--save-markers is not valid JSON. Wrap it in single quotes in the shell.");
     }
     const markers = validateMarkers(raw);
-    saveMarkers(id, markers);
-    process.stdout.write(`Saved ${markers.length} marker(s) to ${MARKERS_FILE(id)}. The dashboard map shows them.\n`);
-    return;
+    await saveMarkers(id, markers);
+    return `Saved ${markers.length} marker(s) for match ${id}. The dashboard map shows them.\n`;
   }
 
   const accounts =
     typeof args.flags.account === "string"
       ? [parseAccountId(args.flags.account)]
-      : profileAccounts(loadProfile()).map((a) => a.account_id);
+      : await ctx.accounts();
   const heroId = typeof args.flags.hero === "string" ? (await resolveHero(args.flags.hero)).id : undefined;
   const data = await buildMapData(id, { accounts: typeof args.flags.account === "string" || !heroId ? accounts : [], heroId });
-  output(args, data, () => render(data));
+  return output(args, data, () => render(data));
 }
 
-await main(main_);
+if (import.meta.main) {
+  const { loadProfile, profileAccounts } = await import("../lib/profile.ts");
+  await main(() => run(Bun.argv.slice(2), { accounts: async () => profileAccounts(loadProfile()).map((a) => a.account_id) }));
+}

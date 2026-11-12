@@ -3,14 +3,19 @@ import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import type { Server } from "bun";
-import { CACHE_DIR } from "./cache.ts";
+import { CACHE_DIR } from "./cache-file.ts";
+import { reviewMatch } from "./coach/review.ts";
 import { DotaError } from "./errors.ts";
 import { heroName } from "./heroes.ts";
 import { getPlayerMatches, parseAndWait } from "./players.ts";
 import { type Profile, accountName, loadProfile, onMatchCommand, profileAccounts, saveProfile, steam64ToAccountId } from "./profile.ts";
+import { saveReview } from "./reviews.ts";
+import { REVIEWS_DIR } from "./store-file.ts";
+
+export { REVIEWS_DIR };
+export const hasAnthropicKey = () => Boolean(process.env.ANTHROPIC_API_KEY?.trim());
 
 export const SKILL_DIR = join(import.meta.dir, "..");
-export const REVIEWS_DIR = join(SKILL_DIR, "reviews");
 export const GSI_CFG_NAME = "gamestate_integration_dotacoach.cfg";
 export const DEFAULT_GSI_PORT = 3742;
 const STATE_FILE = join(CACHE_DIR, "watch-state.json");
@@ -398,33 +403,18 @@ export class Watcher {
       return;
     }
 
-    const claude = Bun.which("claude");
-    if (!claude) {
-      this.log(`\`claude\` is not on PATH. Open Claude Code and ask: "review my last Dota match" (match ${f.matchId}).`);
+    if (!hasAnthropicKey()) {
+      this.log(`No Anthropic API key, so no review for match ${f.matchId}. Add one in the dashboard or as ANTHROPIC_API_KEY in .env.`);
       return;
     }
-    const prompt = [
-      `Use the DotaCoach skill to review Dota 2 match ${f.matchId}. Follow workflows/MatchAnalysis.md.`,
-      f.accountId
-        ? `I played it on account ${f.accountId}${acc?.label ? ` ("${acc.label}")` : ""}${f.hero ? ` as ${f.hero}` : ""}; focus on my player.`
-        : "Focus on the saved main account's player if it is in the match.",
-      "Run `bun run tools/Profile.ts` first for my accounts and notes.",
-      "This review runs automatically right after the game and nobody can answer questions:",
-      "do not ask any, state assumptions instead. Keep it under 300 words and put the three takeaways first.",
-      "If the replay is parsed, save 2-5 map marks with `bun run tools/ReplayMap.ts <id> --save-markers=...` as the workflow describes; the dashboard draws them.",
-    ].join(" ");
-    this.log("Writing the review with Claude Code...");
-    const p = Bun.spawn(
-      [claude, "-p", prompt, "--allowedTools", "Bash(bun *)", "Bash(ID=* bun *)", "Read", "Glob", "Grep"],
-      { cwd: SKILL_DIR, env, stdout: "pipe", stderr: "pipe" },
+    this.log("Writing the review with Claude...");
+    const r = await reviewMatch(
+      { matchId: f.matchId, accountId: f.accountId, hero: f.hero, profile },
+      { log: (s) => this.log(`  ${s}`) },
     );
-    const [out, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
-    if (code !== 0 || !out.trim()) {
-      this.log(`claude exited ${code}: ${(err || out).trim().slice(0, 500)}`);
-      return;
-    }
-    writeFileSync(file, `# Match ${f.matchId}\n\n${out.trim()}\n`);
-    this.log(`Review saved: reviews/${f.matchId}.md`);
-    this.sink({ at: Date.now(), text: `\n${"-".repeat(60)}\n${out.trim()}\n${"-".repeat(60)}` });
+    const text = r.markdown.trim();
+    await saveReview(f.matchId, `# Match ${f.matchId}\n\n${text}\n`);
+    this.log(`Review saved: reviews/${f.matchId}.md (${r.model}, ${r.usage.input + r.usage.cacheRead + r.usage.cacheWrite} input / ${r.usage.output} output tokens${r.marks ? `, ${r.marks} map marks` : ""})`);
+    this.sink({ at: Date.now(), text: `\n${"-".repeat(60)}\n${text}\n${"-".repeat(60)}` });
   }
 }
